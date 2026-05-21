@@ -17,7 +17,7 @@ Every ticket card in List and Query results has expandable inline forms — no n
 - **Update Status** — State, status reason, follow-up date, notes, effort time
 - **Close Alarm** — Note template, close note, effort time (alarm INCs only)
 
-Only one form can be open at a time per ticket. Click the same link again to collapse it.
+Only one form can be open at a time per ticket. Click the same link again to collapse it. Forms stay usable after submission — inputs are cleared and you can submit again without refreshing.
 
 ### Alarm Quick Close
 
