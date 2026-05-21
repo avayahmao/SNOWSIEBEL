@@ -184,6 +184,52 @@ async function handleMessage(msg) {
     return injectAndExec(tab.id, debugFieldsInPage, []);
   }
 
+  if (msg.action === "alarmClose") {
+    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    const rawState = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
+    const currentState = String(rawState);
+
+    // Define chain from current state to Closed
+    const CHAINS = {
+      "1": ["2", "4", "6", "7"],
+      "2": ["4", "6", "7"],
+      "-5": ["4", "6", "7"],
+      "5": ["4", "6", "7"],
+      "4": ["6", "7"],
+      "6": ["7"]
+    };
+
+    if (currentState === "7") throw new Error("Ticket is already closed");
+    if (currentState === "8") throw new Error("Cannot close a cancelled ticket");
+
+    const chain = CHAINS[currentState];
+    if (!chain) throw new Error("Cannot auto-close from state " + currentState);
+
+    const STATE_NAMES = { "2": "In Progress", "4": "Service Restored", "6": "Resolved", "7": "Closed" };
+    const steps = [];
+    for (let i = 0; i < chain.length; i++) {
+      const targetState = chain[i];
+      const stepLabel = STATE_NAMES[targetState] || targetState;
+      const fields = { state: targetState };
+      if (targetState === "6" || targetState === "7") {
+        fields.u_status_reason = "Alarm(s) Cleared on Access";
+      }
+      if (targetState === "7") {
+        fields.work_notes = msg.note;
+        fields.u_private_note = msg.note;
+        fields.u_resolution_notes = msg.note;
+      }
+      const updateResult = await injectAndExec(tab.id, updateBySysIdInPage, [table, sysId, fields]);
+      if (updateResult && updateResult._error) {
+        throw new Error("Step " + (i + 1) + "/" + chain.length + " (" + stepLabel + ") failed: " + updateResult._error);
+      }
+      steps.push({ state: targetState, label: stepLabel });
+    }
+    return { success: true, steps, totalSteps: chain.length };
+  }
+
   if (msg.action === "updateTicket" || msg.action === "addComment" || msg.action === "resolveTicket") {
     const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
     if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");

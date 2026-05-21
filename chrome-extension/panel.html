@@ -34,6 +34,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .btn-secondary:hover { background: #d0d0d0; }
 .btn-danger { background: #c62828; color: #fff; }
 .btn-danger:hover { background: #a01e1e; }
+.btn-success { background: #2e7d32; color: #fff; }
+.btn-success:hover { background: #1b5e20; }
+.btn-success:disabled { background: #999; cursor: not-allowed; }
 
 .result-box { margin-top: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-size: 12px; overflow-y: auto; }
 .result-box:empty { display: none; }
@@ -187,6 +190,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   <div class="form-group">
     <label>Ticket Number</label>
     <input id="action-number" placeholder="e.g. INC0012345">
+  </div>
+  <div id="alarm-close-group" style="display:none;margin-bottom:10px;padding:8px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px">
+    <div style="font-weight:600;font-size:12px;color:#2e7d32;margin-bottom:6px">Alarm Quick Close</div>
+    <div class="form-group">
+      <label>Note Template</label>
+      <select id="alarm-template">
+        <option value="Investigated alarm, confirmed cleared. Closing ticket.">Investigated alarm, confirmed cleared</option>
+        <option value="Alarm(s) cleared on access. Verified system restored to normal operation.">Alarms cleared on access</option>
+        <option value="False alarm confirmed. No further action required.">False alarm confirmed</option>
+        <option value="">Custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Close Note</label>
+      <textarea id="alarm-note" rows="3" placeholder="Enter close note..."></textarea>
+    </div>
+    <button class="btn btn-success" id="btn-alarm-close" style="width:100%">Close Alarm</button>
   </div>
   <div class="row-2">
     <div class="form-group">

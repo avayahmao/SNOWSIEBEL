@@ -104,6 +104,9 @@ document.addEventListener("click", (e) => {
       document.getElementById("action-number").value = ticket;
       switchTab("action");
       refreshActionState(ticket);
+    } else if (target === "alarm-close") {
+      document.getElementById("action-number").value = ticket;
+      switchTab("action");
     }
   }
 });
@@ -226,7 +229,8 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       html += formatField("Updated", t.sys_updated_on);
       html += `<div style="margin-top:4px;font-size:11px">`;
       html += `<a class="jump-link" data-target="comment" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
-      html += `<a class="jump-link" data-target="action" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer">Update Status</a>`;
+      html += `<a class="jump-link" data-target="action" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
+      if (displayVal(t.contact_type) === "Alarm") html += `<a class="jump-link" data-target="alarm-close" data-ticket="${esc(displayVal(t.number))}" style="color:#2e7d32;cursor:pointer;font-weight:600">Close Alarm</a>`;
       html += `</div>`;
       html += `</div>`;
     }
@@ -309,9 +313,19 @@ async function refreshActionState(number) {
   if (!number) return;
   try {
     var ticket = await send({ action: "getTicket", ticketNumber: number });
-    if (!ticket) { currentTicketState = null; return; }
+    if (!ticket) { currentTicketState = null; document.getElementById("alarm-close-group").style.display = "none"; return; }
     var raw = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
     currentTicketState = String(raw);
+    // Show/hide alarm close section based on contact_type
+    var contactType = displayVal(ticket.contact_type);
+    var alarmGroup = document.getElementById("alarm-close-group");
+    var isAlarm = contactType === "Alarm" && currentTicketState !== "7" && currentTicketState !== "8";
+    alarmGroup.style.display = isAlarm ? "block" : "none";
+    // Pre-fill template into note
+    if (isAlarm) {
+      var tmpl = document.getElementById("alarm-template");
+      document.getElementById("alarm-note").value = tmpl.value;
+    }
     // Update state dropdown to only show allowed transitions
     var allowed = ALLOWED_TRANSITIONS[currentTicketState] || [];
     var options = actionState.querySelectorAll("option");
@@ -326,9 +340,10 @@ async function refreshActionState(number) {
     }
     // Show current state info
     var stateLabel = STATE_LABELS[currentTicketState] || currentTicketState;
-    actionResult.innerHTML = '<div style="color:#666;font-size:11px">Current state: ' + esc(stateLabel) + '</div>';
+    actionResult.innerHTML = '<div style="color:#666;font-size:11px">Current state: ' + esc(stateLabel) + (isAlarm ? ' &mdash; <span style="color:#2e7d32">Alarm INC detected</span>' : '') + '</div>';
   } catch (e) {
     currentTicketState = null;
+    document.getElementById("alarm-close-group").style.display = "none";
   }
 }
 
@@ -337,6 +352,38 @@ document.getElementById("action-number").addEventListener("change", function() {
 });
 document.getElementById("action-number").addEventListener("keydown", function(e) {
   if (e.key === "Enter") refreshActionState(this.value.trim());
+});
+
+document.getElementById("alarm-template").addEventListener("change", function() {
+  document.getElementById("alarm-note").value = this.value;
+});
+
+document.getElementById("btn-alarm-close").addEventListener("click", async () => {
+  const number = document.getElementById("action-number").value.trim();
+  if (!number) return;
+  const note = document.getElementById("alarm-note").value.trim();
+  if (!note) {
+    showError(actionResult, "Enter a close note");
+    return;
+  }
+  const btn = document.getElementById("btn-alarm-close");
+  btn.disabled = true;
+  showLoading(actionResult);
+  try {
+    const data = await send({ action: "alarmClose", ticketNumber: number, note });
+    // Show step-by-step progress
+    let html = "";
+    for (let i = 0; i < data.steps.length; i++) {
+      html += '<div style="color:#2e7d32;font-size:11px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
+    }
+    html += '<div class="success">Alarm ticket closed successfully</div>';
+    actionResult.innerHTML = html;
+    // Refresh state and hide alarm section (ticket is now closed)
+    refreshActionState(number);
+  } catch (e) {
+    showError(actionResult, e.message);
+  }
+  btn.disabled = false;
 });
 
 actionState.addEventListener("change", function() {
