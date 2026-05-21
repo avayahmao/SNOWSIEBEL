@@ -199,7 +199,7 @@ document.addEventListener("click", (e) => {
     var effortMinutes = null;
     var effortRaw = form.querySelector(".inline-update-effort").value.trim();
     var effortUnit = form.querySelector(".inline-update-effort-unit").value;
-    if (notes && effortRaw) { var v = parseFloat(effortRaw); if (!isNaN(v) && v > 0) effortMinutes = effortUnit === "hours" ? Math.round(v * 60) : Math.round(v); }
+    if (effortRaw) { var v = parseFloat(effortRaw); if (!isNaN(v) && v > 0) effortMinutes = effortUnit === "hours" ? Math.round(v * 60) : Math.round(v); }
     const btn = e.target;
     btn.disabled = true;
     btn.textContent = "Updating...";
@@ -677,7 +677,7 @@ document.getElementById("btn-update").addEventListener("click", async () => {
   let effortMinutes = null;
   const effortRaw = document.getElementById("action-effort").value.trim();
   const effortUnit = document.getElementById("action-effort-unit").value;
-  if (resolutionNote && effortRaw) {
+  if (effortRaw) {
     const val = parseFloat(effortRaw);
     if (!isNaN(val) && val > 0) {
       effortMinutes = effortUnit === "hours" ? Math.round(val * 60) : Math.round(val);
