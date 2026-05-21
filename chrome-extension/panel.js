@@ -119,7 +119,7 @@ document.addEventListener("click", (e) => {
       + '<textarea class="inline-note-text" rows="2" style="width:100%;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit;min-height:50px" placeholder="Enter note..."></textarea></div>'
       + '<button class="btn btn-primary add-note-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:4px 8px;font-size:11px">Submit</button>'
       + '</div>';
-    e.target.insertAdjacentHTML("afterend", formHtml);
+    e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
   }
   if (e.target.classList.contains("add-note-exec")) {
     e.preventDefault();
@@ -177,7 +177,7 @@ document.addEventListener("click", (e) => {
       + '</div>'
       + '<button class="btn btn-primary update-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:4px 8px;font-size:11px">Update</button>'
       + '</div>';
-    e.target.insertAdjacentHTML("afterend", formHtml);
+    e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
   }
   if (e.target.classList.contains("update-exec")) {
     e.preventDefault();
@@ -247,7 +247,7 @@ document.addEventListener("click", (e) => {
       + '<button class="btn btn-success alarm-close-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="flex:1;padding:4px 8px;font-size:11px">Close Alarm</button>'
       + '</div>'
       + '</div>';
-    e.target.insertAdjacentHTML("afterend", formHtml);
+    e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
   }
   if (e.target.classList.contains("alarm-close-exec")) {
     e.preventDefault();
