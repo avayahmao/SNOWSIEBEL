@@ -101,9 +101,14 @@ document.addEventListener("click", (e) => {
     if (!ticket) return;
     const formId = "note-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
     let form = document.getElementById(formId);
-    if (form) { form.style.display = form.style.display === "none" ? "block" : "none"; return; }
+    // Toggle off if already visible
+    if (form && form.style.display !== "none") { form.style.display = "none"; return; }
+    // Mutual exclusion: hide all inline forms in the same ticket card
+    const card = e.target.closest(".ticket-card");
+    if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
+    if (form) { form.style.display = "block"; return; }
     var noteOpts = NOTE_TYPES.map(function(t) { return '<option value="' + esc(t) + '"' + (t === "Status Update" ? ' selected' : '') + '>' + esc(t || "-- Select --") + '</option>'; }).join("");
-    var formHtml = '<div id="' + formId + '" style="margin-top:6px;padding:6px;background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;font-size:11px">'
+    var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;font-size:11px">'
       + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Work Note Type</label>'
       + '<select class="inline-note-type" style="width:100%;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px">' + noteOpts + '</select></div>'
       + '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:end">'
@@ -149,9 +154,14 @@ document.addEventListener("click", (e) => {
     if (!ticket) return;
     const formId = "update-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
     let form = document.getElementById(formId);
-    if (form) { form.style.display = form.style.display === "none" ? "block" : "none"; return; }
+    // Toggle off if already visible
+    if (form && form.style.display !== "none") { form.style.display = "none"; return; }
+    // Mutual exclusion: hide all inline forms in the same ticket card
+    const card = e.target.closest(".ticket-card");
+    if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
+    if (form) { form.style.display = "block"; return; }
     var stateOpts = '<option value="">-- Select --</option><option value="2">In Progress</option><option value="-5">Pending</option><option value="4">Service Restored</option><option value="5">Assigned</option><option value="6">Resolved</option><option value="7">Closed</option><option value="8">Cancelled</option>';
-    var formHtml = '<div id="' + formId + '" style="margin-top:6px;padding:6px;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;font-size:11px">'
+    var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;font-size:11px">'
       + '<div style="margin-bottom:4px;display:flex;gap:4px">'
       + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">State</label>'
       + '<select class="inline-state-select" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px">' + stateOpts + '</select></div>'
@@ -211,12 +221,17 @@ document.addEventListener("click", (e) => {
     if (!ticket) return;
     const formId = "alarm-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
     let form = document.getElementById(formId);
+    // Toggle off if already visible
+    if (form && form.style.display !== "none") { form.style.display = "none"; return; }
+    // Mutual exclusion: hide all inline forms in the same ticket card
+    const card = e.target.closest(".ticket-card");
+    if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
     if (form) {
-      form.style.display = form.style.display === "none" ? "block" : "none";
+      form.style.display = "block";
       return;
     }
     const defaultTmpl = "Investigated alarm, confirmed cleared. Closing ticket.";
-    const formHtml = '<div id="' + formId + '" style="margin-top:6px;padding:6px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;font-size:11px">'
+    const formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;font-size:11px">'
       + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Note Template</label>'
       + '<select class="alarm-tmpl-select" data-form="' + formId + '" style="width:100%;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px">'
       + '<option value="Investigated alarm, confirmed cleared. Closing ticket.">Investigated alarm, confirmed cleared</option>'
@@ -363,7 +378,6 @@ document.getElementById("btn-query").addEventListener("click", async () => {
         html += `</div>`;
       }
     }
-    html += `</div>`;
     // Inline action links for query results
     html += `<div style="margin-top:4px;font-size:11px">`;
     html += `<a class="add-note-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
