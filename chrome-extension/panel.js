@@ -39,6 +39,7 @@ function send(msg) {
 
 const STATE_LABELS = { "-5": "Pending", 1: "New", 2: "In Progress", 3: "Awaiting Problem", 4: "Service Restored", 5: "Assigned", 6: "Resolved", 7: "Closed", 8: "Cancelled" };
 const STATE_CLASS = { "-5": "state-active", 1: "state-new", 2: "state-active", 3: "state-active", 4: "state-resolved", 5: "state-active", 6: "state-resolved", 7: "state-closed", 8: "state-closed" };
+const NOTE_TYPES = ["", "Customer Feedback", "Detail Clarification", "Internal Only", "Cancellation Information", "Escalation 1", "Status Update", "Next Steps", "ADM 1: Problem Statement", "ADM 2: Details/Findings", "ADM 3: Problem Clarification", "ADM 4: Cause", "ADM 5: Solution", "ADM 6: Knowledge Management", "Manager Comments", "Management Escalation Request", "Management Escalation Response", "Management Escalation Update", "Management Escalation Closure", "General Information", "Customer Comments"];
 
 function displayVal(value) {
   if (value == null || value === "") return "";
@@ -93,21 +94,218 @@ document.addEventListener("click", (e) => {
       document.getElementById(id + "-short").style.display = "block";
     }
   }
-  if (e.target.classList.contains("jump-link")) {
+  // --- Inline Add Note ---
+  if (e.target.classList.contains("add-note-link")) {
     e.preventDefault();
-    const target = e.target.dataset.target;
     const ticket = e.target.dataset.ticket;
-    if (target === "comment") {
-      document.getElementById("comment-number").value = ticket;
-      switchTab("comment");
-    } else if (target === "action") {
-      document.getElementById("action-number").value = ticket;
-      switchTab("action");
-      refreshActionState(ticket);
-    } else if (target === "alarm-close") {
-      document.getElementById("action-number").value = ticket;
-      switchTab("action");
+    if (!ticket) return;
+    const formId = "note-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
+    let form = document.getElementById(formId);
+    if (form) { form.style.display = form.style.display === "none" ? "block" : "none"; return; }
+    var noteOpts = NOTE_TYPES.map(function(t) { return '<option value="' + esc(t) + '"' + (t === "Status Update" ? ' selected' : '') + '>' + esc(t || "-- Select --") + '</option>'; }).join("");
+    var formHtml = '<div id="' + formId + '" style="margin-top:6px;padding:6px;background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;font-size:11px">'
+      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Work Note Type</label>'
+      + '<select class="inline-note-type" style="width:100%;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px">' + noteOpts + '</select></div>'
+      + '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:end">'
+      + '<div><label style="font-weight:600;display:block;margin-bottom:2px">Effort</label><input class="inline-note-effort" type="text" placeholder="min" style="width:70px;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px"></div>'
+      + '<select class="inline-note-effort-unit" style="padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px"><option value="minutes">min</option><option value="hours">hr</option></select>'
+      + '</div>'
+      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Message</label>'
+      + '<textarea class="inline-note-text" rows="2" style="width:100%;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit;min-height:50px" placeholder="Enter note..."></textarea></div>'
+      + '<button class="btn btn-primary add-note-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:4px 8px;font-size:11px">Submit</button>'
+      + '</div>';
+    e.target.insertAdjacentHTML("afterend", formHtml);
+  }
+  if (e.target.classList.contains("add-note-exec")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    const formId = e.target.dataset.form;
+    const form = document.getElementById(formId);
+    const text = form.querySelector(".inline-note-text").value.trim();
+    if (!text) { form.querySelector(".inline-note-text").style.borderColor = "#c62828"; return; }
+    const noteType = form.querySelector(".inline-note-type").value;
+    var effortMinutes = null;
+    var effortRaw = form.querySelector(".inline-note-effort").value.trim();
+    var effortUnit = form.querySelector(".inline-note-effort-unit").value;
+    if (effortRaw) { var v = parseFloat(effortRaw); if (!isNaN(v) && v > 0) effortMinutes = effortUnit === "hours" ? Math.round(v * 60) : Math.round(v); }
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Submitting...";
+    send({ action: "addComment", ticketNumber: ticket, comment: text, isWorkNote: true, noteType, visibility: "internal", effortMinutes })
+      .then((data) => {
+        var html = '<div style="color:#2e7d32;font-weight:600">Note added</div>';
+        if (effortMinutes && data && data.timeResult) {
+          if (data.timeResult.error) html += '<div style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; html += '<div style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
+        }
+        form.innerHTML = html;
+      })
+      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; var prev = btn.nextElementSibling; if (prev && prev.classList.contains("inline-err")) prev.remove(); btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
+  }
+  // --- Inline Update Status ---
+  if (e.target.classList.contains("update-link")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    if (!ticket) return;
+    const formId = "update-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
+    let form = document.getElementById(formId);
+    if (form) { form.style.display = form.style.display === "none" ? "block" : "none"; return; }
+    var stateOpts = '<option value="">-- Select --</option><option value="2">In Progress</option><option value="-5">Pending</option><option value="4">Service Restored</option><option value="5">Assigned</option><option value="6">Resolved</option><option value="7">Closed</option><option value="8">Cancelled</option>';
+    var formHtml = '<div id="' + formId + '" style="margin-top:6px;padding:6px;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;font-size:11px">'
+      + '<div style="margin-bottom:4px;display:flex;gap:4px">'
+      + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">State</label>'
+      + '<select class="inline-state-select" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px">' + stateOpts + '</select></div>'
+      + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">Status Reason</label>'
+      + '<select class="inline-reason-select" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"><option value="">Select state first</option></select></div>'
+      + '</div>'
+      + '<div class="inline-followup-group" style="display:none;margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Follow-up Date</label><input class="inline-followup" type="date" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"></div>'
+      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Notes</label>'
+      + '<textarea class="inline-update-notes" rows="2" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit;min-height:50px" placeholder="Optional notes..."></textarea></div>'
+      + '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:end">'
+      + '<div><label style="font-weight:600;display:block;margin-bottom:2px">Effort</label><input class="inline-update-effort" type="text" placeholder="min" style="width:70px;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"></div>'
+      + '<select class="inline-update-effort-unit" style="padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"><option value="minutes">min</option><option value="hours">hr</option></select>'
+      + '</div>'
+      + '<button class="btn btn-primary update-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:4px 8px;font-size:11px">Update</button>'
+      + '</div>';
+    e.target.insertAdjacentHTML("afterend", formHtml);
+  }
+  if (e.target.classList.contains("update-exec")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    const formId = e.target.dataset.form;
+    const form = document.getElementById(formId);
+    const state = form.querySelector(".inline-state-select").value;
+    if (!state) { form.querySelector(".inline-state-select").style.borderColor = "#c62828"; return; }
+    const fields = { state: state };
+    const reason = form.querySelector(".inline-reason-select").value;
+    if (reason && reason !== "-- None --") fields.u_status_reason = reason;
+    if (state === "-5") {
+      const followup = form.querySelector(".inline-followup").value;
+      if (!followup) { form.querySelector(".inline-followup").style.borderColor = "#c62828"; return; }
+      fields.follow_up = followup;
     }
+    const notes = form.querySelector(".inline-update-notes").value.trim();
+    if (notes) { fields.work_notes = notes; fields.u_private_note = notes; if (state === "6") fields.u_resolution_notes = notes; }
+    var effortMinutes = null;
+    var effortRaw = form.querySelector(".inline-update-effort").value.trim();
+    var effortUnit = form.querySelector(".inline-update-effort-unit").value;
+    if (notes && effortRaw) { var v = parseFloat(effortRaw); if (!isNaN(v) && v > 0) effortMinutes = effortUnit === "hours" ? Math.round(v * 60) : Math.round(v); }
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Updating...";
+    send({ action: "updateTicket", ticketNumber: ticket, fields, effortMinutes })
+      .then((data) => {
+        var html = '<div style="color:#2e7d32;font-weight:600">State updated to ' + esc(STATE_LABELS[state] || state) + '</div>';
+        if (effortMinutes && data && data.timeResult) {
+          if (data.timeResult.error) html += '<div style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; html += '<div style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
+        }
+        form.innerHTML = html;
+      })
+      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; var prev = btn.nextElementSibling; if (prev && prev.classList.contains("inline-err")) prev.remove(); btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
+  }
+  // --- Inline Alarm Close ---
+  if (e.target.classList.contains("alarm-close-link")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    if (!ticket) return;
+    const formId = "alarm-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
+    let form = document.getElementById(formId);
+    if (form) {
+      form.style.display = form.style.display === "none" ? "block" : "none";
+      return;
+    }
+    const defaultTmpl = "Investigated alarm, confirmed cleared. Closing ticket.";
+    const formHtml = '<div id="' + formId + '" style="margin-top:6px;padding:6px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;font-size:11px">'
+      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Note Template</label>'
+      + '<select class="alarm-tmpl-select" data-form="' + formId + '" style="width:100%;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px">'
+      + '<option value="Investigated alarm, confirmed cleared. Closing ticket.">Investigated alarm, confirmed cleared</option>'
+      + '<option value="Alarm(s) cleared on access. Verified system restored to normal operation.">Alarms cleared on access</option>'
+      + '<option value="False alarm confirmed. No further action required.">False alarm confirmed</option>'
+      + '<option value="">Custom</option>'
+      + '</select></div>'
+      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Close Note</label>'
+      + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="2" style="width:100%;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit">' + esc(defaultTmpl) + '</textarea></div>'
+      + '<div style="display:flex;gap:4px;align-items:end">'
+      + '<div><input class="alarm-effort-input" data-form="' + formId + '" type="text" placeholder="Effort" style="width:70px;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px"></div>'
+      + '<select class="alarm-effort-unit" style="padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px"><option value="minutes">min</option><option value="hours">hr</option></select>'
+      + '<button class="btn btn-success alarm-close-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="flex:1;padding:4px 8px;font-size:11px">Close Alarm</button>'
+      + '</div>'
+      + '</div>';
+    e.target.insertAdjacentHTML("afterend", formHtml);
+  }
+  if (e.target.classList.contains("alarm-close-exec")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    const formId = e.target.dataset.form;
+    const form = document.getElementById(formId);
+    const noteInput = form ? form.querySelector(".alarm-note-input") : null;
+    const effortInput = form ? form.querySelector(".alarm-effort-input") : null;
+    const effortUnitEl = form ? form.querySelector(".alarm-effort-unit") : null;
+    const note = noteInput ? noteInput.value.trim() : "";
+    if (!note) {
+      if (noteInput) noteInput.style.borderColor = "#c62828";
+      return;
+    }
+    let effortMinutes = null;
+    if (effortInput && effortInput.value.trim()) {
+      const val = parseFloat(effortInput.value.trim());
+      var effortUnit = effortUnitEl ? effortUnitEl.value : "minutes";
+      if (!isNaN(val) && val > 0) effortMinutes = effortUnit === "hours" ? Math.round(val * 60) : Math.round(val);
+    }
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "Closing...";
+    send({ action: "alarmClose", ticketNumber: ticket, note, effortMinutes })
+      .then((data) => {
+        let html = "";
+        for (let i = 0; i < data.steps.length; i++) {
+          html += '<div style="color:#2e7d32;font-size:10px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
+        }
+        html += '<div style="color:#2e7d32;font-weight:600">Closed successfully</div>';
+        if (effortMinutes && data.timeResult) {
+          if (data.timeResult.error) {
+            html += '<div style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          } else {
+            html += '<div style="color:#2e7d32;font-size:10px">Effort: ' + effortMinutes + ' min recorded</div>';
+          }
+        }
+        form.innerHTML = html;
+      })
+      .catch((err) => {
+        btn.disabled = false;
+        btn.textContent = "Close Alarm";
+        var prev = btn.nextElementSibling; if (prev && prev.classList.contains("inline-err")) prev.remove();
+        btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>');
+      });
+  }
+});
+
+// Delegated change handler for inline selects
+document.addEventListener("change", (e) => {
+  // Alarm template → textarea
+  if (e.target.classList.contains("alarm-tmpl-select")) {
+    var noteInput = e.target.closest("div[id]").querySelector(".alarm-note-input");
+    if (noteInput) noteInput.value = e.target.value;
+  }
+  // State → status reasons
+  if (e.target.classList.contains("inline-state-select")) {
+    var form = e.target.closest("div[id]");
+    var reasonSelect = form.querySelector(".inline-reason-select");
+    var followupGroup = form.querySelector(".inline-followup-group");
+    var reasons = STATUS_REASONS[e.target.value] || [];
+    reasonSelect.innerHTML = "";
+    if (reasons.length === 0) {
+      reasonSelect.innerHTML = '<option value="">-- None --</option>';
+    } else {
+      for (var i = 0; i < reasons.length; i++) {
+        var opt = document.createElement("option");
+        opt.value = reasons[i];
+        opt.textContent = reasons[i];
+        reasonSelect.appendChild(opt);
+      }
+    }
+    if (followupGroup) followupGroup.style.display = e.target.value === "-5" ? "block" : "none";
   }
 });
 
@@ -166,10 +364,11 @@ document.getElementById("btn-query").addEventListener("click", async () => {
       }
     }
     html += `</div>`;
-    // Jump links for query results
+    // Inline action links for query results
     html += `<div style="margin-top:4px;font-size:11px">`;
-    html += `<a class="jump-link" data-target="comment" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
-    html += `<a class="jump-link" data-target="action" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer">Update Status</a>`;
+    html += `<a class="add-note-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
+    html += `<a class="update-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
+    if (displayVal(ticket.contact_type) === "Alarm") html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
     html += `</div></div>`;
     queryResult.innerHTML = html;
   } catch (e) {
@@ -228,9 +427,9 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       html += formatField("Assigned to", t.assigned_to);
       html += formatField("Updated", t.sys_updated_on);
       html += `<div style="margin-top:4px;font-size:11px">`;
-      html += `<a class="jump-link" data-target="comment" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
-      html += `<a class="jump-link" data-target="action" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
-      if (displayVal(t.contact_type) === "Alarm") html += `<a class="jump-link" data-target="alarm-close" data-ticket="${esc(displayVal(t.number))}" style="color:#2e7d32;cursor:pointer;font-weight:600">Close Alarm</a>`;
+      html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
+      html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
+      if (displayVal(t.contact_type) === "Alarm") html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
       html += `</div>`;
       html += `</div>`;
     }
@@ -369,17 +568,38 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
   const btn = document.getElementById("btn-alarm-close");
   btn.disabled = true;
   showLoading(actionResult);
+  // Parse effort time
+  let effortMinutes = null;
+  const effortRaw = document.getElementById("alarm-effort").value.trim();
+  const effortUnit = document.getElementById("alarm-effort-unit").value;
+  if (effortRaw) {
+    const val = parseFloat(effortRaw);
+    if (!isNaN(val) && val > 0) {
+      effortMinutes = effortUnit === "hours" ? Math.round(val * 60) : Math.round(val);
+    }
+  }
   try {
-    const data = await send({ action: "alarmClose", ticketNumber: number, note });
+    const data = await send({ action: "alarmClose", ticketNumber: number, note, effortMinutes });
     // Show step-by-step progress
     let html = "";
     for (let i = 0; i < data.steps.length; i++) {
       html += '<div style="color:#2e7d32;font-size:11px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
     }
     html += '<div class="success">Alarm ticket closed successfully</div>';
+    if (effortMinutes && data.timeResult) {
+      if (data.timeResult.error) {
+        html += '<div style="color:#e65100;font-size:11px;margin-top:4px">Time worked error: ' + esc(data.timeResult.error) + '</div>';
+      } else {
+        var hrs = Math.floor(effortMinutes / 60);
+        var mins = effortMinutes % 60;
+        var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' minutes';
+        html += '<div style="font-size:11px;margin-top:4px;color:#2e7d32">Effort: ' + esc(timeStr) + ' recorded</div>';
+      }
+    }
     actionResult.innerHTML = html;
     // Refresh state and hide alarm section (ticket is now closed)
     refreshActionState(number);
+    document.getElementById("alarm-effort").value = "";
   } catch (e) {
     showError(actionResult, e.message);
   }

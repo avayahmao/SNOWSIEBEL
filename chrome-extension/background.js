@@ -223,11 +223,25 @@ async function handleMessage(msg) {
       }
       const updateResult = await injectAndExec(tab.id, updateBySysIdInPage, [table, sysId, fields]);
       if (updateResult && updateResult._error) {
-        throw new Error("Step " + (i + 1) + "/" + chain.length + " (" + stepLabel + ") failed: " + updateResult._error);
+        const lastOk = steps.length > 0 ? " Ticket is now in " + steps[steps.length - 1].label + "." : "";
+        throw new Error("Step " + (i + 1) + "/" + chain.length + " (" + stepLabel + ") failed: " + updateResult._error + lastOk);
       }
       steps.push({ state: targetState, label: stepLabel });
     }
-    return { success: true, steps, totalSteps: chain.length };
+    // Log effort time if specified
+    let timeResult = null;
+    if (msg.effortMinutes) {
+      try {
+        const userId = await injectAndExec(tab.id, getUserIdInPage, []);
+        timeResult = await injectAndExec(tab.id, addTimeWorkedInPage, [table, sysId, msg.effortMinutes, userId, msg.note]);
+      } catch (e) {
+        timeResult = { error: e.message };
+      }
+      try {
+        await injectAndExec(tab.id, addTimeToParentInPage, [table, sysId, msg.effortMinutes]);
+      } catch (e) { /* best effort */ }
+    }
+    return { success: true, steps, totalSteps: chain.length, timeResult };
   }
 
   if (msg.action === "updateTicket" || msg.action === "addComment" || msg.action === "resolveTicket") {

@@ -13,13 +13,16 @@ Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Targ
 ## Key Patterns
 - All API calls go through `snowFetch()` in the page's MAIN world (required for auth)
 - ServiceNow returns `{value, display_value}` objects — use `displayVal()` to extract readable strings
-- No inline onclick handlers (CSP blocks them) — use delegated event listeners with `data-*` attributes and class-based selectors (`.toggle-link`, `.jump-link`)
+- No inline onclick handlers (CSP blocks them) — use delegated event listeners with class-based selectors (`.toggle-link`, `.add-note-link`, `.update-link`, `.alarm-close-link`)
 - Table detection from ticket prefix (first 3 chars) via `TABLE_MAP`
 - Journal entries queried from `sys_journal_field` table
 - `switchTab(name)` handles tab switching; List tab auto-loads "My Open Tickets" on first visit and on startup
-- Ticket cards in List/Query results have `+ Add Note` and `Update Status` jump links that switch tabs and pre-fill ticket number
+- Ticket cards in List/Query results have inline expandable forms for Add Note, Update Status, and Close Alarm — no tab switching needed
 - Visibility is hardcoded to `internal` (public dropdown removed — ACL blocks `comments` field)
 - Action panel has a single Update button (Resolve removed); Notes field auto-includes `work_notes` + `u_private_note` on state change
+- Alarm INCs detected via `contact_type === "Alarm"` — shows purple badge and green "Close Alarm" action
+- `alarmClose` action chains state transitions sequentially (e.g. New → In Progress → Service Restored → Resolved → Closed) with `u_status_reason` set on Resolved/Closed steps
+- List tab is Incident-only with "My" preset filters; raw query and table selector are hidden
 
 ## Custom Fields
 - `u_wn_type` — Work Note Type dropdown (e.g. "Status Update", "Customer Feedback")

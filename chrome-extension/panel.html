@@ -84,13 +84,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 <div id="panel-list" class="panel active">
   <div class="row-2">
     <div class="form-group">
-      <label>Table</label>
-      <select id="list-table">
-        <option value="incident">Incident</option>
-        <option value="change_request">Change</option>
-        <option value="problem">Problem</option>
-        <option value="sc_req_item">Request (RITM)</option>
-        <option value="task">Task</option>
+      <label>Filter</label>
+      <select id="list-preset">
+        <option value="my-open">My Open Tickets</option>
+        <option value="my-updated">My Recently Updated</option>
+        <option value="my-resolved">My Resolved (7 days)</option>
+        <option value="awaiting">Awaiting User Info</option>
       </select>
     </div>
     <div class="form-group">
@@ -98,22 +97,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
       <input id="list-limit" type="number" value="50" min="1" max="100">
     </div>
   </div>
-  <div class="form-group">
-    <label>Quick Filters</label>
-    <select id="list-preset" style="margin-bottom:6px">
-      <option value="">-- Custom query --</option>
-      <option value="my-open">My Open Tickets</option>
-      <option value="my-updated">My Recently Updated</option>
-      <option value="my-resolved">My Resolved (7 days)</option>
-      <option value="group-open">My Group's Open Tickets</option>
-      <option value="p1-p2">P1/P2 Open</option>
-      <option value="all-open">All Open</option>
-      <option value="updated-today">Updated Today</option>
-      <option value="created-today">Created Today</option>
-      <option value="awaiting">Awaiting User Info</option>
-    </select>
-    <input id="list-query" value="active=true" placeholder="e.g. active=true^assigned_to=javascript:gs.getUserID()">
-  </div>
+  <input id="list-query" type="hidden" value="active=true">
+  <input id="list-table" type="hidden" value="incident">
   <div class="btn-row">
     <button class="btn btn-primary" id="btn-list">Search</button>
   </div>
@@ -205,6 +190,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
     <div class="form-group">
       <label>Close Note</label>
       <textarea id="alarm-note" rows="3" placeholder="Enter close note..."></textarea>
+    </div>
+    <div class="row-2">
+      <div class="form-group">
+        <label>Effort Time</label>
+        <input id="alarm-effort" type="text" placeholder="e.g. 15  (minutes)">
+      </div>
+      <div class="form-group">
+        <label>&nbsp;</label>
+        <select id="alarm-effort-unit">
+          <option value="minutes">Minutes</option>
+          <option value="hours">Hours</option>
+        </select>
+      </div>
     </div>
     <button class="btn btn-success" id="btn-alarm-close" style="width:100%">Close Alarm</button>
   </div>
