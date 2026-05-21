@@ -62,3 +62,8 @@ The visibility flag `u_wn_public` will always be `false` (internal).
 ## Commands
 - No build step needed — load `chrome-extension/` folder as unpacked extension
 - No tests currently
+
+## ServiceNow Knowledge Base
+- `docs/servicenow-kb/` — Official ServiceNow docs (Australia release) for reference
+- Key files: `c_TableAPI.md` (REST Table API), `incident-state-model.md`, `change-state-model.md`, `problem-state-model.md`
+- Source: https://github.com/ServiceNow/ServiceNowDocs (australia branch)
