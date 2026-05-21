@@ -123,6 +123,8 @@ document.getElementById("btn-query").addEventListener("click", async () => {
     }
     let html = `<div class="ticket-card">`;
     html += `<div class="ticket-num">${esc(displayVal(ticket.number) || number)}</div>`;
+    const qSubcls = displayVal(ticket.contact_type);
+    if (qSubcls === "Alarm") html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
     html += formatField("Description", ticket.short_description);
     const stateRaw = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
     html += `<div class="ticket-field"><b>State:</b> ${stateBadge(ticket.state)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
@@ -214,6 +216,8 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     for (const t of tickets) {
       html += `<div class="ticket-card">`;
       html += `<div class="ticket-num">${esc(displayVal(t.number))}</div>`;
+      const subcls = displayVal(t.contact_type);
+      if (subcls === "Alarm") html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
       html += formatField("Description", t.short_description);
       const stateRaw = typeof t.state === "object" ? t.state.value : t.state;
       html += `<div class="ticket-field"><b>State:</b> ${stateBadge(t.state)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;

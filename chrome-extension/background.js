@@ -51,7 +51,7 @@ function getTicketInPage(table, ticketNumber) {
 
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
-  params.set("sysparm_fields", fields || "number,short_description,state,priority,assigned_to,sys_updated_on");
+  params.set("sysparm_fields", fields || "number,short_description,state,priority,assigned_to,sys_updated_on,contact_type");
   return snowFetch("GET", "/api/now/table/" + table + "?" + params)
     .then(function(d) { return d.result || []; });
 }
@@ -130,7 +130,6 @@ function getJournalInPage(sysId, tableName) {
 }
 
 function debugFieldsInPage() {
-  // Query recent journal entries to see element field names
   return snowFetch("GET", "/api/now/table/sys_journal_field?sysparm_query=name=incident^ORDERBYDESCsys_created_on&sysparm_limit=20&sysparm_display_value=all&sysparm_fields=element,value,sys_created_on,element_id")
     .then(function(j) {
       var entries = j.result || [];
