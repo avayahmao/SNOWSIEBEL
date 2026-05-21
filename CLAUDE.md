@@ -131,3 +131,6 @@ State codes are defined in `TABLE_STATES` in panel.js. Each table has its own st
 - `docs/servicenow-kb/` — Official ServiceNow docs (Australia release) for reference
 - Key files: `c_TableAPI.md` (REST Table API), `incident-state-model.md`, `change-state-model.md`, `problem-state-model.md`
 - Source: https://github.com/ServiceNow/ServiceNowDocs (australia branch)
+
+## CHROMEWEBSTORE.md 智能体指令
+- Whenever you are creating or making changes to a Chrome extension, create and manage a CHROMEWEBSTORE.md file. You can use the chrome-extensions skill to learn about the format of this file.
