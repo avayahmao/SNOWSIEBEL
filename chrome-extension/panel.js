@@ -37,8 +37,152 @@ function send(msg) {
   });
 }
 
-const STATE_LABELS = { "-5": "Pending", 1: "New", 2: "In Progress", 3: "Awaiting Problem", 4: "Service Restored", 5: "Assigned", 6: "Resolved", 7: "Closed", 8: "Cancelled" };
-const STATE_CLASS = { "-5": "state-active", 1: "state-new", 2: "state-active", 3: "state-active", 4: "state-resolved", 5: "state-active", 6: "state-resolved", 7: "state-closed", 8: "state-closed" };
+// --- Per-table state configuration ---
+// Each key is a ServiceNow table name; entries define state labels, CSS classes,
+// selectable states, allowed transitions, status reasons, alarm chains, etc.
+const TABLE_STATES = {
+  incident: {
+    labels: { "-5": "Pending", "1": "New", "2": "In Progress", "3": "Awaiting Problem", "4": "Service Restored", "5": "Assigned", "6": "Resolved", "7": "Closed", "8": "Cancelled" },
+    classes: { "-5": "state-active", "1": "state-new", "2": "state-active", "3": "state-active", "4": "state-resolved", "5": "state-active", "6": "state-resolved", "7": "state-closed", "8": "state-closed" },
+    selectableStates: ["2", "-5", "4", "5", "6", "7", "8"],
+    transitions: {
+      "1": ["2", "5"],
+      "2": ["-5", "4", "6", "8"],
+      "-5": ["2", "4", "6", "8"],
+      "4": ["2", "-5", "6", "8"],
+      "5": ["2", "-5", "4", "6", "8"],
+    },
+    reasons: {
+      "2": ["-- None --", "Escalation to Product House", "Dispatch", "Escalated to Vendor/Partner"],
+      "-5": ["Additional Information from Client", "Approval from Client to Proceed", "Awaiting Change Request", "Client Action Required", "Client Hold", "Manager Intervention", "Remote Access to Equipment", "Success Confirmation from Client", "Support Contact Hold", "Third Party Vendor Action Required"],
+      "4": ["-- None --"],
+      "6": ["-- None --", "Customer or Third Party Action", "Repaired", "Replaced", "Patch / Upgrade", "Alarm(s) Cleared on Access", "Change Request"],
+      "7": ["-- None --", "Repaired", "Replaced", "Patch / Upgrade", "Customer or Third Party Action", "Alarm(s) Cleared on Access", "Change Request"],
+      "8": ["-- None --", "Customer/Location Inactive", "Duplicate Incident", "Ignore Alarm", "Test Alarm", "Customer Cancelled", "Created Change Request Instead", "Ticket Created in Error", "No Longer Required"],
+    },
+    alarmChains: {
+      "1": ["2", "4", "6", "7"],
+      "2": ["4", "6", "7"],
+      "-5": ["4", "6", "7"],
+      "5": ["4", "6", "7"],
+      "4": ["6", "7"],
+      "6": ["7"],
+    },
+    supportsAlarmClose: true,
+    resolveState: "6",
+    pendingState: "-5",
+    hasFollowUp: true,
+  },
+  change_request: {
+    labels: { "-5": "New", "-4": "Assess", "-3": "Authorize", "-2": "Scheduled", "-1": "Implement", "0": "Review", "3": "Closed", "4": "Canceled" },
+    classes: { "-5": "state-new", "-4": "state-active", "-3": "state-active", "-2": "state-active", "-1": "state-active", "0": "state-resolved", "3": "state-closed", "4": "state-closed" },
+    selectableStates: ["-4", "-3", "-2", "-1", "0", "3", "4"],
+    transitions: {
+      "-5": ["-4", "-2", "4"],
+      "-4": ["-3", "-2", "4"],
+      "-3": ["-2", "4"],
+      "-2": ["-1", "4"],
+      "-1": ["0", "4"],
+      "0": ["3"],
+    },
+    reasons: {},
+    supportsAlarmClose: false,
+    resolveState: "3",
+    pendingState: null,
+    hasFollowUp: false,
+  },
+  problem: {
+    labels: { "101": "New", "102": "Assess", "103": "Root Cause Analysis", "104": "Fix in Progress", "105": "Resolved", "106": "Closed" },
+    classes: { "101": "state-new", "102": "state-active", "103": "state-active", "104": "state-active", "105": "state-resolved", "106": "state-closed" },
+    selectableStates: ["102", "103", "104", "105", "106"],
+    transitions: {
+      "101": ["102"],
+      "102": ["103", "106"],
+      "103": ["104", "105", "106"],
+      "104": ["105", "106"],
+      "105": ["106"],
+    },
+    reasons: {},
+    supportsAlarmClose: false,
+    resolveState: "105",
+    pendingState: null,
+    hasFollowUp: false,
+  },
+  sc_req_item: {
+    labels: { "1": "Open", "2": "Work in Progress", "3": "Closed Complete", "4": "Closed Incomplete", "5": "Closed Skipped" },
+    classes: { "1": "state-new", "2": "state-active", "3": "state-closed", "4": "state-closed", "5": "state-closed" },
+    selectableStates: ["2", "3", "4", "5"],
+    transitions: {
+      "1": ["2", "3", "4", "5"],
+      "2": ["3", "4", "5"],
+    },
+    reasons: {},
+    supportsAlarmClose: false,
+    resolveState: "3",
+    pendingState: null,
+    hasFollowUp: false,
+  },
+  sc_request: {
+    labels: { "-5": "Pending", "4": "Closed Complete", "5": "Closed Incomplete", "6": "Closed Rejected" },
+    classes: { "-5": "state-active", "4": "state-closed", "5": "state-closed", "6": "state-closed" },
+    selectableStates: ["4", "5", "6"],
+    transitions: {
+      "-5": ["4", "5", "6"],
+    },
+    reasons: {},
+    supportsAlarmClose: false,
+    resolveState: "4",
+    pendingState: "-5",
+    hasFollowUp: false,
+  },
+  task: {
+    labels: { "-5": "Pending", "1": "Open", "2": "Work in Progress", "3": "Closed Complete", "4": "Closed Incomplete", "7": "Closed Skipped" },
+    classes: { "-5": "state-active", "1": "state-new", "2": "state-active", "3": "state-closed", "4": "state-closed", "7": "state-closed" },
+    selectableStates: ["2", "3", "4", "7"],
+    transitions: {
+      "-5": ["1", "3", "4", "7"],
+      "1": ["2", "3", "4", "7"],
+      "2": ["3", "4", "7"],
+    },
+    reasons: {},
+    supportsAlarmClose: false,
+    resolveState: "3",
+    pendingState: "-5",
+    hasFollowUp: false,
+  },
+  sc_task: {
+    labels: { "-5": "Pending", "1": "Open", "2": "Work in Progress", "3": "Closed Complete", "4": "Closed Incomplete", "7": "Closed Skipped" },
+    classes: { "-5": "state-active", "1": "state-new", "2": "state-active", "3": "state-closed", "4": "state-closed", "7": "state-closed" },
+    selectableStates: ["2", "3", "4", "7"],
+    transitions: {
+      "-5": ["1", "3", "4", "7"],
+      "1": ["2", "3", "4", "7"],
+      "2": ["3", "4", "7"],
+    },
+    reasons: {},
+    supportsAlarmClose: false,
+    resolveState: "3",
+    pendingState: "-5",
+    hasFollowUp: false,
+  },
+};
+
+// Ticket prefix → table name (mirrors background.js TABLE_MAP for panel-side lookups)
+const TABLE_MAP = {
+  INC: "incident", CHG: "change_request", TAS: "task",
+  RIT: "sc_req_item", REQ: "sc_request", PRB: "problem",
+  KB0: "kb_knowledge", STY: "rm_story", SCT: "sc_task",
+};
+
+function detectTable(ticketNumber) {
+  const prefix = (ticketNumber || "").slice(0, 3).toUpperCase();
+  return TABLE_MAP[prefix] || "incident";
+}
+
+function getStateConfig(table) {
+  return TABLE_STATES[table] || TABLE_STATES.incident;
+}
+
 const NOTE_TYPES = ["", "Customer Feedback", "Detail Clarification", "Internal Only", "Cancellation Information", "Escalation 1", "Status Update", "Next Steps", "ADM 1: Problem Statement", "ADM 2: Details/Findings", "ADM 3: Problem Clarification", "ADM 4: Cause", "ADM 5: Solution", "ADM 6: Knowledge Management", "Manager Comments", "Management Escalation Request", "Management Escalation Response", "Management Escalation Update", "Management Escalation Closure", "General Information", "Customer Comments"];
 
 function displayVal(value) {
@@ -53,11 +197,12 @@ function displayVal(value) {
   return String(value);
 }
 
-function stateBadge(state) {
+function stateBadge(state, table) {
+  const cfg = getStateConfig(table || "incident");
   const dv = displayVal(state);
-  const key = (typeof state === "object" ? state.value : state) || "";
-  const label = dv || STATE_LABELS[key] || key;
-  const cls = STATE_CLASS[key] || "state-new";
+  const key = String(typeof state === "object" ? state.value : state) || "";
+  const label = dv || cfg.labels[key] || key;
+  const cls = cfg.classes[key] || "state-new";
   return `<span class="state-badge ${cls}">${esc(label)}</span>`;
 }
 
@@ -187,15 +332,24 @@ document.addEventListener("click", (e) => {
       form.style.display = "block";
       return;
     }
-    var stateOpts = '<option value="">-- Select --</option><option value="2">In Progress</option><option value="-5">Pending</option><option value="4">Service Restored</option><option value="5">Assigned</option><option value="6">Resolved</option><option value="7">Closed</option><option value="8">Cancelled</option>';
+    var iuTable = detectTable(ticket);
+    var iuCfg = getStateConfig(iuTable);
+    var stateOpts = '<option value="">-- Select --</option>';
+    for (var si = 0; si < iuCfg.selectableStates.length; si++) {
+      var sv = iuCfg.selectableStates[si];
+      stateOpts += '<option value="' + esc(sv) + '">' + esc(iuCfg.labels[sv] || sv) + '</option>';
+    }
+    var followupHtml = iuCfg.hasFollowUp
+      ? '<div class="inline-followup-group" style="display:none;margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Follow-up Date</label><input class="inline-followup" type="date" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"></div>'
+      : '';
     var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;font-size:11px">'
       + '<div style="margin-bottom:4px;display:flex;gap:4px">'
       + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">State</label>'
-      + '<select class="inline-state-select" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px">' + stateOpts + '</select></div>'
+      + '<select class="inline-state-select" data-table="' + esc(iuTable) + '" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px">' + stateOpts + '</select></div>'
       + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">Status Reason</label>'
       + '<select class="inline-reason-select" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"><option value="">Select state first</option></select></div>'
       + '</div>'
-      + '<div class="inline-followup-group" style="display:none;margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Follow-up Date</label><input class="inline-followup" type="date" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"></div>'
+      + followupHtml
       + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Notes</label>'
       + '<textarea class="inline-update-notes" rows="2" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit;min-height:50px" placeholder="Optional notes..."></textarea></div>'
       + '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:end">'
@@ -217,22 +371,22 @@ document.addEventListener("click", (e) => {
     
     const stateEl = form.querySelector(".inline-state-select");
     const state = stateEl.value;
+    const ueTable = stateEl.dataset.table || "incident";
+    const ueCfg = getStateConfig(ueTable);
     if (!state) { stateEl.style.borderColor = "#c62828"; return; }
     stateEl.style.borderColor = "";
-    
+
     const fields = { state: state };
     const reason = form.querySelector(".inline-reason-select").value;
     if (reason && reason !== "-- None --") fields.u_status_reason = reason;
-    if (state === "-5") {
+    if (state === ueCfg.pendingState && ueCfg.hasFollowUp) {
       const followupEl = form.querySelector(".inline-followup");
-      const followup = followupEl.value;
-      if (!followup) { followupEl.style.borderColor = "#c62828"; return; }
-      followupEl.style.borderColor = "";
-      fields.follow_up = followup;
+      if (followupEl && !followupEl.value) { followupEl.style.borderColor = "#c62828"; return; }
+      if (followupEl) { followupEl.style.borderColor = ""; fields.follow_up = followupEl.value; }
     }
     const notesEl = form.querySelector(".inline-update-notes");
     const notes = notesEl.value.trim();
-    if (notes) { fields.work_notes = notes; fields.u_private_note = notes; if (state === "6") fields.u_resolution_notes = notes; }
+    if (notes) { fields.work_notes = notes; fields.u_private_note = notes; if (state === ueCfg.resolveState) fields.u_resolution_notes = notes; }
     var effortMinutes = null;
     const effortEl = form.querySelector(".inline-update-effort");
     var effortRaw = effortEl.value.trim();
@@ -248,7 +402,7 @@ document.addEventListener("click", (e) => {
         if (notesEl) notesEl.value = "";
         if (effortEl) effortEl.value = "";
         
-        var msgHtml = '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600;margin-top:4px">State updated to ' + esc(STATE_LABELS[state] || state) + '</div>';
+        var msgHtml = '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600;margin-top:4px">State updated to ' + esc(ueCfg.labels[state] || state) + '</div>';
         if (effortMinutes && data && data.timeResult) {
           if (data.timeResult.error) msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
           else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
@@ -365,7 +519,9 @@ document.addEventListener("change", (e) => {
     var form = e.target.closest("div[id]");
     var reasonSelect = form.querySelector(".inline-reason-select");
     var followupGroup = form.querySelector(".inline-followup-group");
-    var reasons = STATUS_REASONS[e.target.value] || [];
+    var iuTable = e.target.dataset.table || "incident";
+    var iuCfg = getStateConfig(iuTable);
+    var reasons = iuCfg.reasons[e.target.value] || [];
     reasonSelect.innerHTML = "";
     if (reasons.length === 0) {
       reasonSelect.innerHTML = '<option value="">-- None --</option>';
@@ -377,7 +533,7 @@ document.addEventListener("change", (e) => {
         reasonSelect.appendChild(opt);
       }
     }
-    if (followupGroup) followupGroup.style.display = e.target.value === "-5" ? "block" : "none";
+    if (followupGroup) followupGroup.style.display = (e.target.value === iuCfg.pendingState && iuCfg.hasFollowUp) ? "block" : "none";
   }
 });
 
@@ -397,10 +553,12 @@ document.getElementById("btn-query").addEventListener("click", async () => {
     let html = `<div class="ticket-card">`;
     html += `<div class="ticket-num">${esc(displayVal(ticket.number) || number)}</div>`;
     const qSubcls = displayVal(ticket.contact_type);
-    if (qSubcls === "Alarm") html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
+    const qTable = detectTable(number);
+    const qCfg = getStateConfig(qTable);
+    if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
     html += formatField("Description", ticket.short_description);
     const stateRaw = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
-    html += `<div class="ticket-field"><b>State:</b> ${stateBadge(ticket.state)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
+    html += `<div class="ticket-field"><b>State:</b> ${stateBadge(ticket.state, qTable)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
     html += formatField("Priority", ticket.priority);
     html += formatField("Assigned to", ticket.assigned_to);
     html += formatField("Assignment group", ticket.assignment_group);
@@ -439,7 +597,7 @@ document.getElementById("btn-query").addEventListener("click", async () => {
     html += `<div style="margin-top:4px;font-size:11px">`;
     html += `<a class="add-note-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
     html += `<a class="update-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
-    if (displayVal(ticket.contact_type) === "Alarm") html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
+    if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
     html += `</div></div>`;
     queryResult.innerHTML = html;
   } catch (e) {
@@ -490,17 +648,19 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       html += `<div class="ticket-card">`;
       html += `<div class="ticket-num">${esc(displayVal(t.number))}</div>`;
       const subcls = displayVal(t.contact_type);
-      if (subcls === "Alarm") html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
+      const lTable = detectTable(displayVal(t.number));
+      const lCfg = getStateConfig(lTable);
+      if (subcls === "Alarm" && lCfg.supportsAlarmClose) html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
       html += formatField("Description", t.short_description);
       const stateRaw = typeof t.state === "object" ? t.state.value : t.state;
-      html += `<div class="ticket-field"><b>State:</b> ${stateBadge(t.state)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
+      html += `<div class="ticket-field"><b>State:</b> ${stateBadge(t.state, lTable)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
       html += formatField("Priority", t.priority);
       html += formatField("Assigned to", t.assigned_to);
       html += formatField("Updated", t.sys_updated_on);
       html += `<div style="margin-top:4px;font-size:11px">`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
       html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
-      if (displayVal(t.contact_type) === "Alarm") html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
+      if (displayVal(t.contact_type) === "Alarm" && lCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
       html += `</div>`;
       html += `</div>`;
     }
@@ -558,61 +718,57 @@ const actionState = document.getElementById("action-state");
 const actionFollowupGroup = document.getElementById("action-followup-group");
 const actionStatusReason = document.getElementById("action-status-reason");
 
-const STATUS_REASONS = {
-  "2": ["-- None --", "Escalation to Product House", "Dispatch", "Escalated to Vendor/Partner"],
-  "-5": ["Additional Information from Client", "Approval from Client to Proceed", "Awaiting Change Request", "Client Action Required", "Client Hold", "Manager Intervention", "Remote Access to Equipment", "Success Confirmation from Client", "Support Contact Hold", "Third Party Vendor Action Required"],
-  "4": ["-- None --"],
-  "6": ["-- None --", "Customer or Third Party Action", "Repaired", "Replaced", "Patch / Upgrade", "Alarm(s) Cleared on Access", "Change Request"],
-  "7": ["-- None --", "Repaired", "Replaced", "Patch / Upgrade", "Customer or Third Party Action", "Alarm(s) Cleared on Access", "Change Request"],
-  "8": ["-- None --", "Customer/Location Inactive", "Duplicate Incident", "Ignore Alarm", "Test Alarm", "Customer Cancelled", "Created Change Request Instead", "Ticket Created in Error", "No Longer Required"],
-};
-
-// Allowed state transitions
-const ALLOWED_TRANSITIONS = {
-  "1": ["2", "5"],           // New → In Progress, Assigned
-  "2": ["-5", "4", "6", "8"], // In Progress → Pending, Service Restored, Resolved, Cancelled
-  "-5": ["2", "4", "6", "8"], // Pending → In Progress, Service Restored, Resolved, Cancelled
-  "4": ["2", "-5", "6", "8"], // Service Restored → In Progress, Pending, Resolved, Cancelled
-  "5": ["2", "-5", "4", "6", "8"], // Assigned → In Progress, Pending, Service Restored, Resolved, Cancelled
-};
-
 var currentTicketState = null;
+var currentActionTable = "incident";
+
+// Build state options for the Action tab dropdown based on table config
+function buildActionStateOptions(table, allowedStates) {
+  var cfg = getStateConfig(table);
+  var html = '<option value="">-- Select --</option>';
+  for (var i = 0; i < cfg.selectableStates.length; i++) {
+    var sv = cfg.selectableStates[i];
+    var disabled = allowedStates && allowedStates.length > 0 && allowedStates.indexOf(sv) < 0;
+    var hidden = disabled;
+    html += '<option value="' + esc(sv) + '"' + (disabled ? ' disabled' : '') + ' style="' + (hidden ? 'display:none' : '') + '">' + esc(cfg.labels[sv] || sv) + '</option>';
+  }
+  return html;
+}
 
 // Fetch current ticket state and update allowed transitions
 async function refreshActionState(number) {
   if (!number) return;
   try {
     var ticket = await send({ action: "getTicket", ticketNumber: number });
-    if (!ticket) { currentTicketState = null; document.getElementById("alarm-close-group").style.display = "none"; return; }
+    if (!ticket) { currentTicketState = null; currentActionTable = "incident"; document.getElementById("alarm-close-group").style.display = "none"; return; }
     var raw = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
     currentTicketState = String(raw);
-    // Show/hide alarm close section based on contact_type
+    currentActionTable = detectTable(number);
+    var cfg = getStateConfig(currentActionTable);
+    // Show/hide alarm close section based on contact_type and table support
     var contactType = displayVal(ticket.contact_type);
     var alarmGroup = document.getElementById("alarm-close-group");
-    var isAlarm = contactType === "Alarm" && currentTicketState !== "7" && currentTicketState !== "8";
+    var isAlarm = contactType === "Alarm" && cfg.supportsAlarmClose && currentTicketState !== "7" && currentTicketState !== "8";
     alarmGroup.style.display = isAlarm ? "block" : "none";
     // Pre-fill template into note
     if (isAlarm) {
       var tmpl = document.getElementById("alarm-template");
       document.getElementById("alarm-note").value = tmpl.value;
     }
-    // Update state dropdown to only show allowed transitions
-    var allowed = ALLOWED_TRANSITIONS[currentTicketState] || [];
-    var options = actionState.querySelectorAll("option");
-    for (var i = 0; i < options.length; i++) {
-      var val = options[i].value;
-      if (!val) {
-        options[i].disabled = false;
-        continue;
-      }
-      options[i].disabled = allowed.length > 0 && allowed.indexOf(val) < 0;
-      options[i].style.display = allowed.length > 0 && allowed.indexOf(val) < 0 ? "none" : "";
+    // Rebuild state dropdown based on table config and allowed transitions
+    var allowed = cfg.transitions[currentTicketState] || [];
+    actionState.innerHTML = buildActionStateOptions(currentActionTable, allowed);
+    // Show/hide follow-up date group based on table config
+    actionFollowupGroup.style.display = cfg.hasFollowUp ? "" : "none";
+    if (cfg.hasFollowUp) {
+      var fl = document.getElementById("action-followup");
+      if (fl) fl.required = false;
     }
     // Show current state info
-    var stateLabel = STATE_LABELS[currentTicketState] || currentTicketState;
+    var stateLabel = cfg.labels[currentTicketState] || currentTicketState;
     actionResult.innerHTML = '<div style="color:#666;font-size:11px">Current state: ' + esc(stateLabel) + (isAlarm ? ' &mdash; <span style="color:#2e7d32">Alarm INC detected</span>' : '') + '</div>';
   } catch (e) {
     currentTicketState = null;
+    currentActionTable = "incident";
     document.getElementById("alarm-close-group").style.display = "none";
   }
 }
@@ -678,11 +834,12 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
 });
 
 actionState.addEventListener("change", function() {
-  // Show/hide follow-up date for Pending
-  actionFollowupGroup.style.display = actionState.value === "-5" ? "" : "none";
+  var aCfg = getStateConfig(currentActionTable);
+  // Show/hide follow-up date for pending state
+  actionFollowupGroup.style.display = (actionState.value === aCfg.pendingState && aCfg.hasFollowUp) ? "" : "none";
   // Update status reason options based on state
   actionStatusReason.innerHTML = "";
-  var reasons = STATUS_REASONS[actionState.value] || [];
+  var reasons = aCfg.reasons[actionState.value] || [];
   if (reasons.length === 0) {
     actionStatusReason.innerHTML = '<option value="">-- None --</option>';
   } else {
@@ -703,12 +860,13 @@ document.getElementById("btn-update").addEventListener("click", async () => {
     showError(actionResult, "Select a state");
     return;
   }
+  var uCfg = getStateConfig(currentActionTable);
   // Validate state transition
   if (currentTicketState) {
-    var allowed = ALLOWED_TRANSITIONS[currentTicketState] || [];
+    var allowed = uCfg.transitions[currentTicketState] || [];
     if (allowed.length > 0 && allowed.indexOf(state) < 0) {
-      var fromLabel = STATE_LABELS[currentTicketState] || currentTicketState;
-      var toLabel = STATE_LABELS[state] || state;
+      var fromLabel = uCfg.labels[currentTicketState] || currentTicketState;
+      var toLabel = uCfg.labels[state] || state;
       showError(actionResult, "Cannot change from " + fromLabel + " to " + toLabel);
       return;
     }
@@ -716,7 +874,7 @@ document.getElementById("btn-update").addEventListener("click", async () => {
   const fields = { state };
   const statusReason = document.getElementById("action-status-reason").value;
   if (statusReason && statusReason !== "-- None --") fields.u_status_reason = statusReason;
-  if (state === "-5") {
+  if (state === uCfg.pendingState && uCfg.hasFollowUp) {
     const followup = document.getElementById("action-followup").value;
     if (!followup) {
       showError(actionResult, "Follow-up date is required for Pending state");
@@ -728,7 +886,7 @@ document.getElementById("btn-update").addEventListener("click", async () => {
   if (resolutionNote) {
     fields.work_notes = resolutionNote;
     fields.u_private_note = resolutionNote;
-    if (state === "6") fields.u_resolution_notes = resolutionNote;
+    if (state === uCfg.resolveState) fields.u_resolution_notes = resolutionNote;
   }
   // Parse effort time (only when there's a note)
   let effortMinutes = null;

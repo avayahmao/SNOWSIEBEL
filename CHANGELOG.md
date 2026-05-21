@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.7] - 2026-05-22
+
+### Changed
+- **Per-table state models** — State codes, labels, transitions, and status reasons are now defined per ServiceNow table type instead of hardcoding incident-only values. Supported tables: `incident`, `change_request`, `problem`, `sc_req_item`, `sc_request`, `task`, `sc_task`
+- Action tab state dropdown is dynamically populated based on the detected ticket type (e.g. CHG shows New/Assess/Authorize/Scheduled/Implement/Review/Closed/Canceled instead of incident states)
+- Inline Update Status forms also use per-table state options and transitions
+- `stateBadge()` renders correct state labels for all ticket types
+- Alarm Close is gated by `supportsAlarmClose` flag — only `incident` table supports alarm close chains
+- Follow-up date field only shown for tables with `hasFollowUp: true` (only `incident`)
+- Resolution notes only copied when transitioning to the table's `resolveState`
+- `resolveTicket` action in background.js uses per-table resolve state codes
+
+### Technical
+- Replaced 4 flat constants (`STATE_LABELS`, `STATE_CLASS`, `STATUS_REASONS`, `ALLOWED_TRANSITIONS`) with `TABLE_STATES` object keyed by table name
+- Added `detectTable()`, `getStateConfig()`, `buildActionStateOptions()` helper functions in panel.js
+- Added `TABLE_MAP` in panel.js (previously only in background.js)
+- background.js alarm close uses per-table `ALARM_CHAINS` and `STATE_LABELS`
+- background.js resolveTicket uses per-table `RESOLVE_STATES`
+
 ## [1.6] - 2026-05-21
 
 ### Fixed

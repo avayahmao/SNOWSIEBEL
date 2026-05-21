@@ -14,7 +14,10 @@ Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Targ
 - All API calls go through `snowFetch()` in the page's MAIN world (required for auth)
 - ServiceNow returns `{value, display_value}` objects — use `displayVal()` to extract readable strings
 - No inline onclick handlers (CSP blocks them) — use delegated event listeners with class-based selectors (`.toggle-link`, `.add-note-link`, `.update-link`, `.alarm-close-link`)
-- Table detection from ticket prefix (first 3 chars) via `TABLE_MAP`
+- Table detection from ticket prefix (first 3 chars) via `TABLE_MAP` (defined in both panel.js and background.js)
+- Per-table state configuration via `TABLE_STATES` — labels, classes, transitions, reasons, alarm chains are all keyed by ServiceNow table name
+- `getStateConfig(table)` returns the config for a given table, falling back to `incident` for unknown tables
+- `stateBadge(state, table)` renders state badges using the correct per-table labels and CSS classes
 - Journal entries queried from `sys_journal_field` table
 - `switchTab(name)` handles tab switching; List tab auto-loads "My Open Tickets" on first visit and on startup
 - Ticket cards in List/Query results have inline expandable forms for Add Note, Update Status, and Close Alarm — no tab switching needed
@@ -22,8 +25,9 @@ Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Targ
 - Inline forms are reusable after submission — inputs are cleared, status messages shown alongside, previous messages cleaned up on re-submit. No `innerHTML` replacement.
 - Visibility is hardcoded to `internal` (public dropdown removed — ACL blocks `comments` field)
 - Action panel has a single Update button (Resolve removed); Notes field auto-includes `work_notes` + `u_private_note` on state change
-- Alarm INCs detected via `contact_type === "Alarm"` — shows purple badge and green "Close Alarm" action
-- `alarmClose` action chains state transitions sequentially (e.g. New → In Progress → Service Restored → Resolved → Closed) with `u_status_reason` set on Resolved/Closed steps
+- Action panel state dropdown is dynamically populated based on detected ticket table — only shows valid states for that ticket type
+- Alarm INCs detected via `contact_type === "Alarm"` — shows purple badge and green "Close Alarm" action (only for incident table, controlled by `supportsAlarmClose`)
+- `alarmClose` action chains state transitions sequentially (e.g. New → In Progress → Service Restored → Resolved → Closed) with `u_status_reason` set on Resolved/Closed steps — only supported for `incident` table
 - Effort time is independent of notes — effort is recorded whenever a value is entered, regardless of whether notes are filled in
 - List tab is Incident-only with "My" preset filters; raw query and table selector are hidden
 
@@ -53,11 +57,71 @@ The visibility flag `u_wn_public` will always be `false` (internal).
 2. Modify the business rule to also check `u_public_note` (not just `comments.changes()`), OR
 3. Create a Scripted REST API with elevated privileges to create comments
 
-## State Codes
-```
-1=New, 2=In Progress, -5=Pending, 4=Service Restored,
-3=Awaiting Problem, 5=Assigned, 6=Resolved, 7=Closed, 8=Cancelled
-```
+## State Codes (Per Table)
+
+State codes are defined in `TABLE_STATES` in panel.js. Each table has its own state model:
+
+### incident (Avaya custom)
+| Code | State | Note |
+|------|-------|------|
+| 1 | New | |
+| 2 | In Progress | |
+| 3 | Awaiting Problem | |
+| 4 | Service Restored | |
+| 5 | Assigned | |
+| 6 | Resolved | |
+| 7 | Closed | |
+| 8 | Cancelled | |
+| -5 | Pending | Follow-up date required |
+
+### change_request
+| Code | State |
+|------|-------|
+| -5 | New |
+| -4 | Assess |
+| -3 | Authorize |
+| -2 | Scheduled |
+| -1 | Implement |
+| 0 | Review |
+| 3 | Closed |
+| 4 | Canceled |
+
+### problem (Enhanced model)
+| Code | State |
+|------|-------|
+| 101 | New |
+| 102 | Assess |
+| 103 | Root Cause Analysis |
+| 104 | Fix in Progress |
+| 105 | Resolved |
+| 106 | Closed |
+
+### sc_req_item (RITM)
+| Code | State |
+|------|-------|
+| 1 | Open |
+| 2 | Work in Progress |
+| 3 | Closed Complete |
+| 4 | Closed Incomplete |
+| 5 | Closed Skipped |
+
+### sc_request (REQ)
+| Code | State |
+|------|-------|
+| -5 | Pending |
+| 4 | Closed Complete |
+| 5 | Closed Incomplete |
+| 6 | Closed Rejected |
+
+### task / sc_task
+| Code | State |
+|------|-------|
+| -5 | Pending |
+| 1 | Open |
+| 2 | Work in Progress |
+| 3 | Closed Complete |
+| 4 | Closed Incomplete |
+| 7 | Closed Skipped |
 
 ## Commands
 - No build step needed — load `chrome-extension/` folder as unpacked extension

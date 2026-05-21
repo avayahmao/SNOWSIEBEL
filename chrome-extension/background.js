@@ -191,27 +191,35 @@ async function handleMessage(msg) {
     const rawState = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
     const currentState = String(rawState);
 
-    // Define chain from current state to Closed
-    const CHAINS = {
-      "1": ["2", "4", "6", "7"],
-      "2": ["4", "6", "7"],
-      "-5": ["4", "6", "7"],
-      "5": ["4", "6", "7"],
-      "4": ["6", "7"],
-      "6": ["7"]
+    // Per-table alarm close chains (only incident supports this)
+    const ALARM_CHAINS = {
+      incident: {
+        "1": ["2", "4", "6", "7"],
+        "2": ["4", "6", "7"],
+        "-5": ["4", "6", "7"],
+        "5": ["4", "6", "7"],
+        "4": ["6", "7"],
+        "6": ["7"]
+      }
     };
+    const STATE_LABELS = {
+      incident: { "2": "In Progress", "4": "Service Restored", "6": "Resolved", "7": "Closed" },
+    };
+
+    const chains = ALARM_CHAINS[table];
+    if (!chains) throw new Error("Alarm close is not supported for table " + table);
+    const labels = STATE_LABELS[table] || {};
 
     if (currentState === "7") throw new Error("Ticket is already closed");
     if (currentState === "8") throw new Error("Cannot close a cancelled ticket");
 
-    const chain = CHAINS[currentState];
+    const chain = chains[currentState];
     if (!chain) throw new Error("Cannot auto-close from state " + currentState);
 
-    const STATE_NAMES = { "2": "In Progress", "4": "Service Restored", "6": "Resolved", "7": "Closed" };
     const steps = [];
     for (let i = 0; i < chain.length; i++) {
       const targetState = chain[i];
-      const stepLabel = STATE_NAMES[targetState] || targetState;
+      const stepLabel = labels[targetState] || targetState;
       const fields = { state: targetState };
       if (targetState === "6" || targetState === "7") {
         fields.u_status_reason = "Alarm(s) Cleared on Access";
@@ -253,7 +261,12 @@ async function handleMessage(msg) {
       // Public updates are comments; internal updates are work notes.
       fields = buildCommentFields(msg);
     } else if (msg.action === "resolveTicket") {
-      fields = { state: "6" };
+      // Per-table resolve state codes
+      const RESOLVE_STATES = {
+        incident: "6", change_request: "3", problem: "105",
+        sc_req_item: "3", sc_request: "4", task: "3", sc_task: "3",
+      };
+      fields = { state: RESOLVE_STATES[table] || "6" };
       if (msg.resolutionNote) fields.u_resolution_notes = msg.resolutionNote;
       if (msg.statusReason) fields.u_status_reason = msg.statusReason;
     }
