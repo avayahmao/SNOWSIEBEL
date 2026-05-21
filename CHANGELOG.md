@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.5] - 2026-05-21
+
+### Fixed
+- Effort time logging now works for Update Status and Close Alarm without requiring notes to be filled in (previously effort was silently skipped if notes were empty)
+
 ## [1.4] - 2026-05-21
 
 ### Fixed

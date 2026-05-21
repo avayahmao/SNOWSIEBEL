@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SNOW Ticket Manager",
-  "version": "1.4",
+  "version": "1.5",
   "description": "Manage ServiceNow tickets in Chrome sidebar using your existing SSO session",
   "permissions": ["cookies", "activeTab", "scripting", "sidePanel"],
   "host_permissions": ["*://avaya.service-now.com/*"],
