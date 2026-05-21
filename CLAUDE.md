@@ -18,6 +18,7 @@ Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Targ
 - Journal entries queried from `sys_journal_field` table
 - `switchTab(name)` handles tab switching; List tab auto-loads "My Open Tickets" on first visit and on startup
 - Ticket cards in List/Query results have inline expandable forms for Add Note, Update Status, and Close Alarm — no tab switching needed
+- Inline forms use mutual exclusion (only one visible per ticket card) and toggle on re-click; forms are inserted after the links container div to keep all links on one line
 - Visibility is hardcoded to `internal` (public dropdown removed — ACL blocks `comments` field)
 - Action panel has a single Update button (Resolve removed); Notes field auto-includes `work_notes` + `u_private_note` on state change
 - Alarm INCs detected via `contact_type === "Alarm"` — shows purple badge and green "Close Alarm" action
