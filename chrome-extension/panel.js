@@ -106,7 +106,13 @@ document.addEventListener("click", (e) => {
     // Mutual exclusion: hide all inline forms in the same ticket card
     const card = e.target.closest(".ticket-card");
     if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
-    if (form) { form.style.display = "block"; return; }
+    if (form) {
+      form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
+      const textEl = form.querySelector(".inline-note-text");
+      if (textEl) textEl.style.borderColor = "";
+      form.style.display = "block";
+      return;
+    }
     var noteOpts = NOTE_TYPES.map(function(t) { return '<option value="' + esc(t) + '"' + (t === "Status Update" ? ' selected' : '') + '>' + esc(t || "-- Select --") + '</option>'; }).join("");
     var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;font-size:11px">'
       + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Work Note Type</label>'
@@ -126,11 +132,19 @@ document.addEventListener("click", (e) => {
     const ticket = e.target.dataset.ticket;
     const formId = e.target.dataset.form;
     const form = document.getElementById(formId);
-    const text = form.querySelector(".inline-note-text").value.trim();
-    if (!text) { form.querySelector(".inline-note-text").style.borderColor = "#c62828"; return; }
+    
+    // Clear previous status/error messages
+    form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
+    
+    const textEl = form.querySelector(".inline-note-text");
+    const text = textEl.value.trim();
+    if (!text) { textEl.style.borderColor = "#c62828"; return; }
+    textEl.style.borderColor = "";
+    
     const noteType = form.querySelector(".inline-note-type").value;
     var effortMinutes = null;
-    var effortRaw = form.querySelector(".inline-note-effort").value.trim();
+    const effortEl = form.querySelector(".inline-note-effort");
+    var effortRaw = effortEl.value.trim();
     var effortUnit = form.querySelector(".inline-note-effort-unit").value;
     if (effortRaw) { var v = parseFloat(effortRaw); if (!isNaN(v) && v > 0) effortMinutes = effortUnit === "hours" ? Math.round(v * 60) : Math.round(v); }
     const btn = e.target;
@@ -138,14 +152,19 @@ document.addEventListener("click", (e) => {
     btn.textContent = "Submitting...";
     send({ action: "addComment", ticketNumber: ticket, comment: text, isWorkNote: true, noteType, visibility: "internal", effortMinutes })
       .then((data) => {
-        var html = '<div style="color:#2e7d32;font-weight:600">Note added</div>';
+        btn.disabled = false;
+        btn.textContent = "Submit";
+        textEl.value = "";
+        effortEl.value = "";
+        
+        var msgHtml = '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600;margin-top:4px">Note added</div>';
         if (effortMinutes && data && data.timeResult) {
-          if (data.timeResult.error) html += '<div style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
-          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; html += '<div style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
+          if (data.timeResult.error) msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
         }
-        form.innerHTML = html;
+        btn.insertAdjacentHTML("afterend", msgHtml);
       })
-      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; var prev = btn.nextElementSibling; if (prev && prev.classList.contains("inline-err")) prev.remove(); btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
+      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
   }
   // --- Inline Update Status ---
   if (e.target.classList.contains("update-link")) {
@@ -159,7 +178,15 @@ document.addEventListener("click", (e) => {
     // Mutual exclusion: hide all inline forms in the same ticket card
     const card = e.target.closest(".ticket-card");
     if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
-    if (form) { form.style.display = "block"; return; }
+    if (form) {
+      form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
+      const stateEl = form.querySelector(".inline-state-select");
+      if (stateEl) stateEl.style.borderColor = "";
+      const followupEl = form.querySelector(".inline-followup");
+      if (followupEl) followupEl.style.borderColor = "";
+      form.style.display = "block";
+      return;
+    }
     var stateOpts = '<option value="">-- Select --</option><option value="2">In Progress</option><option value="-5">Pending</option><option value="4">Service Restored</option><option value="5">Assigned</option><option value="6">Resolved</option><option value="7">Closed</option><option value="8">Cancelled</option>';
     var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;font-size:11px">'
       + '<div style="margin-bottom:4px;display:flex;gap:4px">'
@@ -184,20 +211,31 @@ document.addEventListener("click", (e) => {
     const ticket = e.target.dataset.ticket;
     const formId = e.target.dataset.form;
     const form = document.getElementById(formId);
-    const state = form.querySelector(".inline-state-select").value;
-    if (!state) { form.querySelector(".inline-state-select").style.borderColor = "#c62828"; return; }
+    
+    // Clear previous status/error messages
+    form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
+    
+    const stateEl = form.querySelector(".inline-state-select");
+    const state = stateEl.value;
+    if (!state) { stateEl.style.borderColor = "#c62828"; return; }
+    stateEl.style.borderColor = "";
+    
     const fields = { state: state };
     const reason = form.querySelector(".inline-reason-select").value;
     if (reason && reason !== "-- None --") fields.u_status_reason = reason;
     if (state === "-5") {
-      const followup = form.querySelector(".inline-followup").value;
-      if (!followup) { form.querySelector(".inline-followup").style.borderColor = "#c62828"; return; }
+      const followupEl = form.querySelector(".inline-followup");
+      const followup = followupEl.value;
+      if (!followup) { followupEl.style.borderColor = "#c62828"; return; }
+      followupEl.style.borderColor = "";
       fields.follow_up = followup;
     }
-    const notes = form.querySelector(".inline-update-notes").value.trim();
+    const notesEl = form.querySelector(".inline-update-notes");
+    const notes = notesEl.value.trim();
     if (notes) { fields.work_notes = notes; fields.u_private_note = notes; if (state === "6") fields.u_resolution_notes = notes; }
     var effortMinutes = null;
-    var effortRaw = form.querySelector(".inline-update-effort").value.trim();
+    const effortEl = form.querySelector(".inline-update-effort");
+    var effortRaw = effortEl.value.trim();
     var effortUnit = form.querySelector(".inline-update-effort-unit").value;
     if (effortRaw) { var v = parseFloat(effortRaw); if (!isNaN(v) && v > 0) effortMinutes = effortUnit === "hours" ? Math.round(v * 60) : Math.round(v); }
     const btn = e.target;
@@ -205,14 +243,19 @@ document.addEventListener("click", (e) => {
     btn.textContent = "Updating...";
     send({ action: "updateTicket", ticketNumber: ticket, fields, effortMinutes })
       .then((data) => {
-        var html = '<div style="color:#2e7d32;font-weight:600">State updated to ' + esc(STATE_LABELS[state] || state) + '</div>';
+        btn.disabled = false;
+        btn.textContent = "Update";
+        if (notesEl) notesEl.value = "";
+        if (effortEl) effortEl.value = "";
+        
+        var msgHtml = '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600;margin-top:4px">State updated to ' + esc(STATE_LABELS[state] || state) + '</div>';
         if (effortMinutes && data && data.timeResult) {
-          if (data.timeResult.error) html += '<div style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
-          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; html += '<div style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
+          if (data.timeResult.error) msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
         }
-        form.innerHTML = html;
+        btn.insertAdjacentHTML("afterend", msgHtml);
       })
-      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; var prev = btn.nextElementSibling; if (prev && prev.classList.contains("inline-err")) prev.remove(); btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
+      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
   }
   // --- Inline Alarm Close ---
   if (e.target.classList.contains("alarm-close-link")) {
@@ -227,6 +270,9 @@ document.addEventListener("click", (e) => {
     const card = e.target.closest(".ticket-card");
     if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
     if (form) {
+      form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
+      const noteInput = form.querySelector(".alarm-note-input");
+      if (noteInput) noteInput.style.borderColor = "";
       form.style.display = "block";
       return;
     }
@@ -254,6 +300,10 @@ document.addEventListener("click", (e) => {
     const ticket = e.target.dataset.ticket;
     const formId = e.target.dataset.form;
     const form = document.getElementById(formId);
+    
+    // Clear previous status/error messages
+    form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
+    
     const noteInput = form ? form.querySelector(".alarm-note-input") : null;
     const effortInput = form ? form.querySelector(".alarm-effort-input") : null;
     const effortUnitEl = form ? form.querySelector(".alarm-effort-unit") : null;
@@ -262,6 +312,8 @@ document.addEventListener("click", (e) => {
       if (noteInput) noteInput.style.borderColor = "#c62828";
       return;
     }
+    if (noteInput) noteInput.style.borderColor = "";
+    
     let effortMinutes = null;
     if (effortInput && effortInput.value.trim()) {
       const val = parseFloat(effortInput.value.trim());
@@ -273,25 +325,30 @@ document.addEventListener("click", (e) => {
     btn.textContent = "Closing...";
     send({ action: "alarmClose", ticketNumber: ticket, note, effortMinutes })
       .then((data) => {
-        let html = "";
+        btn.disabled = false;
+        btn.textContent = "Close Alarm";
+        if (effortInput) effortInput.value = "";
+        
+        let msgHtml = "";
         for (let i = 0; i < data.steps.length; i++) {
-          html += '<div style="color:#2e7d32;font-size:10px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
+          msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
         }
-        html += '<div style="color:#2e7d32;font-weight:600">Closed successfully</div>';
+        msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600">Closed successfully</div>';
         if (effortMinutes && data.timeResult) {
           if (data.timeResult.error) {
-            html += '<div style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+            msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
           } else {
-            html += '<div style="color:#2e7d32;font-size:10px">Effort: ' + effortMinutes + ' min recorded</div>';
+            msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + effortMinutes + ' min recorded</div>';
           }
         }
-        form.innerHTML = html;
+        const container = btn.parentElement;
+        container.insertAdjacentHTML("afterend", msgHtml);
       })
       .catch((err) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
-        var prev = btn.nextElementSibling; if (prev && prev.classList.contains("inline-err")) prev.remove();
-        btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>');
+        const container = btn.parentElement;
+        container.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>');
       });
   }
 });

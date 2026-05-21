@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6] - 2026-05-21
+
+### Fixed
+- Inline forms now stay usable after submission — inputs are cleared but the form stays open, allowing consecutive note/status updates without refreshing
+- Previous status/error messages are cleaned up on re-submit
+- Validation border highlights are reset when re-showing a form
+
 ## [1.5] - 2026-05-21
 
 ### Fixed
