@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; color: #1a1a1a; background: #f5f5f5; }
+
+.header { background: #293e6b; color: #fff; padding: 10px 12px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.header svg { width: 18px; height: 18px; }
+
+.tabs { display: flex; background: #fff; border-bottom: 2px solid #e0e0e0; position: sticky; top: 0; z-index: 10; }
+.tab { flex: 1; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 500; color: #666; border: none; background: none; transition: all .15s; }
+.tab:hover { background: #e8e8e8; }
+.tab.active { color: #293e6b; border-bottom: 2px solid #293e6b; margin-bottom: -2px; font-weight: 600; }
+
+.panel { display: none; padding: 12px; }
+.panel.active { display: block; }
+
+.form-group { margin-bottom: 8px; }
+.form-group label { display: block; font-weight: 600; margin-bottom: 3px; color: #444; font-size: 12px; }
+.form-group input, .form-group textarea, .form-group select {
+  width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+}
+.form-group textarea { resize: vertical; min-height: 120px; font-family: inherit; }
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: #293e6b; box-shadow: 0 0 0 2px rgba(41,62,107,0.15); }
+
+.btn-row { display: flex; gap: 6px; margin-top: 8px; }
+.btn { padding: 7px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: background .15s; }
+.btn-primary { background: #293e6b; color: #fff; }
+.btn-primary:hover { background: #1e2f52; }
+.btn-primary:disabled { background: #999; cursor: not-allowed; }
+.btn-secondary { background: #e0e0e0; color: #333; }
+.btn-secondary:hover { background: #d0d0d0; }
+.btn-danger { background: #c62828; color: #fff; }
+.btn-danger:hover { background: #a01e1e; }
+
+.result-box { margin-top: 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px; font-size: 12px; overflow-y: auto; }
+.result-box:empty { display: none; }
+
+.ticket-card { padding: 8px 0; border-bottom: 1px solid #eee; }
+.ticket-card:last-child { border-bottom: none; }
+.ticket-num { font-weight: 700; color: #293e6b; font-size: 13px; }
+.ticket-field { color: #555; margin-top: 3px; line-height: 1.4; word-break: break-word; }
+.ticket-field b { color: #333; }
+.state-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.state-new { background: #e3f2fd; color: #1565c0; }
+.state-active { background: #fff3e0; color: #e65100; }
+.state-resolved { background: #e8f5e9; color: #2e7d32; }
+.state-closed { background: #eceff1; color: #546e7a; }
+
+.toggle-link { color: #293e6b; cursor: pointer; font-size: 11px; margin-left: 4px; }
+.toggle-link:hover { text-decoration: underline; }
+
+.loading { text-align: center; padding: 20px; color: #666; }
+.error { color: #c62828; background: #ffebee; padding: 6px 8px; border-radius: 4px; margin-top: 4px; }
+.success { color: #2e7d32; padding: 6px 8px; margin-top: 4px; }
+
+.row-2 { display: flex; gap: 8px; }
+.row-2 > .form-group { flex: 1; }
+
+.sn-link { color: #293e6b; text-decoration: none; }
+.sn-link:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+  SNOW Ticket Manager
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="list">List</button>
+  <button class="tab" data-tab="comment">Work Note</button>
+  <button class="tab" data-tab="action">Action</button>
+  <button class="tab" data-tab="query">Query</button>
+</div>
+
+<!-- List Panel -->
+<div id="panel-list" class="panel active">
+  <div class="row-2">
+    <div class="form-group">
+      <label>Table</label>
+      <select id="list-table">
+        <option value="incident">Incident</option>
+        <option value="change_request">Change</option>
+        <option value="problem">Problem</option>
+        <option value="sc_req_item">Request (RITM)</option>
+        <option value="task">Task</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Limit</label>
+      <input id="list-limit" type="number" value="50" min="1" max="100">
+    </div>
+  </div>
+  <div class="form-group">
+    <label>Quick Filters</label>
+    <select id="list-preset" style="margin-bottom:6px">
+      <option value="">-- Custom query --</option>
+      <option value="my-open">My Open Tickets</option>
+      <option value="my-updated">My Recently Updated</option>
+      <option value="my-resolved">My Resolved (7 days)</option>
+      <option value="group-open">My Group's Open Tickets</option>
+      <option value="p1-p2">P1/P2 Open</option>
+      <option value="all-open">All Open</option>
+      <option value="updated-today">Updated Today</option>
+      <option value="created-today">Created Today</option>
+      <option value="awaiting">Awaiting User Info</option>
+    </select>
+    <input id="list-query" value="active=true" placeholder="e.g. active=true^assigned_to=javascript:gs.getUserID()">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-list">Search</button>
+  </div>
+  <div id="list-result" class="result-box"></div>
+</div>
+
+<!-- Comment Panel -->
+<div id="panel-comment" class="panel">
+  <div class="form-group">
+    <label>Ticket Number</label>
+    <input id="comment-number" placeholder="e.g. INC0012345">
+  </div>
+  <div class="row-2">
+    <div class="form-group" style="display:none">
+      <input type="hidden" id="comment-type" value="worknote">
+    </div>
+    <div class="form-group" style="display:none">
+      <input type="hidden" id="comment-visibility" value="internal">
+    </div>
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Work Note Type</label>
+      <select id="comment-note-type">
+        <option value="">-- Select --</option>
+        <option value="Customer Feedback">Customer Feedback</option>
+        <option value="Detail Clarification">Detail Clarification</option>
+        <option value="Internal Only">Internal Only</option>
+        <option value="Cancellation Information">Cancellation Information</option>
+        <option value="Escalation 1">Escalation 1</option>
+        <option value="Status Update" selected>Status Update</option>
+        <option value="Next Steps">Next Steps</option>
+        <option value="ADM 1: Problem Statement">ADM 1: Problem Statement</option>
+        <option value="ADM 2: Details/Findings">ADM 2: Details/Findings</option>
+        <option value="ADM 3: Problem Clarification">ADM 3: Problem Clarification</option>
+        <option value="ADM 4: Cause">ADM 4: Cause</option>
+        <option value="ADM 5: Solution">ADM 5: Solution</option>
+        <option value="ADM 6: Knowledge Management">ADM 6: Knowledge Management</option>
+        <option value="Manager Comments">Manager Comments</option>
+        <option value="Management Escalation Request">Management Escalation Request</option>
+        <option value="Management Escalation Response">Management Escalation Response</option>
+        <option value="Management Escalation Update">Management Escalation Update</option>
+        <option value="Management Escalation Closure">Management Escalation Closure</option>
+        <option value="General Information">General Information</option>
+        <option value="Customer Comments">Customer Comments</option>
+      </select>
+    </div>
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Effort Time</label>
+      <input id="comment-effort" type="text" value="15" placeholder="e.g. 30  (minutes)">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <select id="comment-effort-unit">
+        <option value="minutes">Minutes</option>
+        <option value="hours">Hours</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-group">
+    <label>Message</label>
+    <textarea id="comment-text" placeholder="Enter comment..."></textarea>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-comment">Submit</button>
+  </div>
+  <div id="comment-result" class="result-box"></div>
+</div>
+
+<!-- Action Panel -->
+<div id="panel-action" class="panel">
+  <div class="form-group">
+    <label>Ticket Number</label>
+    <input id="action-number" placeholder="e.g. INC0012345">
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>State</label>
+      <select id="action-state">
+        <option value="">-- Select --</option>
+        <option value="2">In Progress</option>
+        <option value="-5">Pending</option>
+        <option value="4">Service Restored</option>
+        <option value="5">Assigned</option>
+        <option value="6">Resolved</option>
+        <option value="7">Closed</option>
+        <option value="8">Cancelled</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Status Reason</label>
+      <select id="action-status-reason">
+        <option value="">Select a state first</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-group" id="action-followup-group" style="display:none">
+    <label>Follow-up Date (required for Pending)</label>
+    <input id="action-followup" type="date">
+  </div>
+  <div class="form-group">
+    <label>Notes</label>
+    <textarea id="action-resolution" placeholder="Optional notes (added as work note with state change)"></textarea>
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Effort Time</label>
+      <input id="action-effort" type="text" placeholder="e.g. 30  (minutes)">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <select id="action-effort-unit">
+        <option value="minutes">Minutes</option>
+        <option value="hours">Hours</option>
+      </select>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-update">Update</button>
+  </div>
+  <div id="action-result" class="result-box"></div>
+</div>
+
+<!-- Query Panel -->
+<div id="panel-query" class="panel">
+  <div class="form-group">
+    <label>Ticket Number</label>
+    <input id="query-number" placeholder="e.g. INC0012345, CHG0012345, PRB0012345">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-query">Search</button>
+  </div>
+  <div id="result" class="result-box"></div>
+</div>
+
+<script src="panel.js"></script>
+</body>
+</html>
