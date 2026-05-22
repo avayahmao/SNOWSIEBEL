@@ -3,8 +3,6 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [master]
-    paths:
-      - 'privacy-policy.html'
   workflow_dispatch:
 
 permissions:
@@ -24,12 +22,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp privacy-policy.html _site/index.html
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'privacy-policy.html'
+          path: '_site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
