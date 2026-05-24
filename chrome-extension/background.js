@@ -225,6 +225,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 async function handleMessage(msg) {
+  // GCT actions use a separate tab and don't need SNOW
+  if (msg.action === "siebelCreateActivity") {
+    const steps = [];
+    const stepDefs = [
+      { fn: gctNavigateToServiceRequests, args: [], label: "Navigating to Service → All Service Requests" },
+      { fn: gctQuerySR, args: [msg.srNumber], label: "Querying SR " + msg.srNumber },
+      { fn: gctDrillIntoSR, args: [], label: "Opening SR detail" },
+      { fn: gctNavigateActivities, args: [], label: "Opening Activities tab" },
+      { fn: gctCreateNewActivity, args: [], label: "Creating new activity" },
+      { fn: gctFillActivityForm, args: [{ type: msg.activityType, comments: msg.comments, status: msg.status }], label: "Filling activity form" },
+      { fn: gctLogTime, args: [msg.time], label: "Logging " + msg.time + " minutes" },
+      { fn: gctSave, args: [], label: "Saving activity" },
+    ];
+
+    const gctTab = await findGctTab();
+    for (const step of stepDefs) {
+      try {
+        await injectAndExecGct(gctTab.id, step.fn, step.args);
+        steps.push({ ok: true, label: step.label });
+      } catch (e) {
+        steps.push({ ok: false, label: step.label + " — " + e.message });
+        throw new Error("Step failed: " + step.label + " — " + e.message);
+      }
+    }
+
+    return { success: true, steps };
+  }
+
+  // All other actions require a ServiceNow tab
   const tab = await findSnowTab();
   const table = detectTable(msg.ticketNumber || "");
 
@@ -352,40 +381,6 @@ async function handleMessage(msg) {
       try {
         await injectAndExec(tab.id, addTimeToParentInPage, [table, sysId, msg.effortMinutes]);
       } catch (e) { /* best effort */ }
-    }
-
-    if (msg.action === "siebelCreateActivity") {
-      let gctTab;
-      try {
-        gctTab = await findGctTab();
-      } catch (e) {
-        // Tab was just opened — tell user to log in
-        throw e;
-      }
-
-      const steps = [];
-      const stepDefs = [
-        { fn: gctNavigateToServiceRequests, args: [], label: "Navigating to Service → All Service Requests" },
-        { fn: gctQuerySR, args: [msg.srNumber], label: "Querying SR " + msg.srNumber },
-        { fn: gctDrillIntoSR, args: [], label: "Opening SR detail" },
-        { fn: gctNavigateActivities, args: [], label: "Opening Activities tab" },
-        { fn: gctCreateNewActivity, args: [], label: "Creating new activity" },
-        { fn: gctFillActivityForm, args: [{ type: msg.activityType, comments: msg.comments, status: msg.status }], label: "Filling activity form" },
-        { fn: gctLogTime, args: [msg.time], label: "Logging " + msg.time + " minutes" },
-        { fn: gctSave, args: [], label: "Saving activity" },
-      ];
-
-      for (const step of stepDefs) {
-        try {
-          await injectAndExecGct(gctTab.id, step.fn, step.args);
-          steps.push({ ok: true, label: step.label });
-        } catch (e) {
-          steps.push({ ok: false, label: step.label + " — " + e.message });
-          throw new Error("Step failed: " + step.label + " — " + e.message);
-        }
-      }
-
-      return { success: true, steps };
     }
 
     return (msg.action === "addComment" || msg.action === "updateTicket") ? { result, timeResult } : result;
