@@ -78,6 +78,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
   <button class="tab" data-tab="comment">Work Note</button>
   <button class="tab" data-tab="action">Action</button>
   <button class="tab" data-tab="query">Query</button>
+  <button class="tab" data-tab="siebel-note">Siebel Note</button>
 </div>
 
 <!-- List Panel -->
@@ -257,6 +258,42 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
     <button class="btn btn-primary" id="btn-query">Search</button>
   </div>
   <div id="result" class="result-box"></div>
+</div>
+
+<!-- Siebel Note Panel -->
+<div id="panel-siebel-note" class="panel">
+  <div class="form-group">
+    <label>SR Number</label>
+    <input id="siebel-sr" placeholder="e.g. 1-23642931672">
+  </div>
+  <div class="form-group">
+    <label>Activity Type</label>
+    <select id="siebel-type">
+      <option value="SR Status - Outbound" selected>SR Status - Outbound</option>
+      <option value="SR Note">SR Note</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>Comments</label>
+    <textarea id="siebel-comments" placeholder="Enter activity comments..." required></textarea>
+  </div>
+  <div class="form-group">
+    <label>Time (min)</label>
+    <input id="siebel-time" type="number" value="15" min="1" max="480">
+  </div>
+  <div class="form-group">
+    <label>Status</label>
+    <select id="siebel-status">
+      <option value="Done" selected>Done</option>
+      <option value="In Progress">In Progress</option>
+      <option value="Pending">Pending</option>
+      <option value="Cancelled">Cancelled</option>
+    </select>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-siebel-create">Create Activity &amp; Save</button>
+  </div>
+  <div id="siebel-result" class="result-box"></div>
 </div>
 
 <script src="panel.js"></script>
