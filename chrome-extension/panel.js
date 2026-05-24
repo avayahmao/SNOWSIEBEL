@@ -927,3 +927,48 @@ listAutoLoaded = true;
 document.getElementById("list-preset").value = "my-open";
 document.getElementById("list-query").value = PRESETS["my-open"];
 document.getElementById("btn-list").click();
+
+// --- Siebel Note ---
+const siebelResult = document.getElementById("siebel-result");
+
+document.getElementById("btn-siebel-create").addEventListener("click", async () => {
+  const srNumber = document.getElementById("siebel-sr").value.trim();
+  const activityType = document.getElementById("siebel-type").value;
+  const comments = document.getElementById("siebel-comments").value.trim();
+  const time = parseInt(document.getElementById("siebel-time").value, 10);
+  const status = document.getElementById("siebel-status").value;
+
+  if (!srNumber) { showError(siebelResult, "Enter an SR number"); return; }
+  if (!comments) { showError(siebelResult, "Enter comments"); return; }
+  if (!time || time < 1) { showError(siebelResult, "Enter a valid time"); return; }
+
+  const btn = document.getElementById("btn-siebel-create");
+  btn.disabled = true;
+  btn.textContent = "Working...";
+  siebelResult.innerHTML = '<div class="loading">Initializing...</div>';
+
+  try {
+    const data = await send({
+      action: "siebelCreateActivity",
+      srNumber, activityType, comments, time, status
+    });
+
+    let html = '<div class="success">Activity created and saved for SR ' + esc(srNumber) + '</div>';
+    if (data.steps) {
+      html += '<div style="font-size:11px;margin-top:6px;color:#555">';
+      for (const step of data.steps) {
+        const icon = step.ok ? '&#10003;' : '&#10007;';
+        const cls = step.ok ? 'color:#2e7d32' : 'color:#c62828';
+        html += '<div style="' + cls + '">' + icon + ' ' + esc(step.label) + '</div>';
+      }
+      html += '</div>';
+    }
+    siebelResult.innerHTML = html;
+    document.getElementById("siebel-comments").value = "";
+  } catch (e) {
+    showError(siebelResult, e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Create Activity & Save";
+  }
+});
