@@ -24,6 +24,16 @@ async function findSnowTab() {
   return tabs[0];
 }
 
+async function findGctTab() {
+  const tabs = await chrome.tabs.query({ url: "*://gct.avaya.com/*" });
+  if (tabs.length === 0) {
+    // Open a new GCT tab
+    const tab = await chrome.tabs.create({ url: "https://gct.avaya.com/callcenter_enu/", active: false });
+    throw new Error("GCT tab opened. Please log in to GCT, then retry.");
+  }
+  return tabs[0];
+}
+
 // Inject and execute in the page's MAIN world so we can access g_ck and session cookies
 async function injectAndExec(tabId, fn, args) {
   // Step 1: inject snowFetch helper into the MAIN world
@@ -40,6 +50,58 @@ async function injectAndExec(tabId, fn, args) {
     args,
   });
   return results?.[0]?.result;
+}
+
+async function injectAndExecGct(tabId, fn, args) {
+  // Inject content-gct.js into the MAIN world
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    files: ["content-gct.js"],
+  });
+  // Execute the step function
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: fn,
+    args,
+  });
+  return results?.[0]?.result;
+}
+
+// Step functions — serialized and executed in GCT tab's MAIN world.
+// These reference globals defined in content-gct.js.
+
+function gctNavigateToServiceRequests() {
+  return window._siebel.navigateToServiceRequests();
+}
+
+function gctQuerySR(srNumber) {
+  return window._siebel.querySR(srNumber);
+}
+
+function gctDrillIntoSR() {
+  return window._siebel.drillIntoSR();
+}
+
+function gctNavigateActivities() {
+  return window._siebel.navigateActivities();
+}
+
+function gctCreateNewActivity() {
+  return window._siebel.createNewActivity();
+}
+
+function gctFillActivityForm(params) {
+  return window._siebel.fillActivityForm(params);
+}
+
+function gctLogTime(minutes) {
+  return window._siebel.logTime(minutes);
+}
+
+function gctSave() {
+  return window._siebel.save();
 }
 
 // --- Functions that run inside the ServiceNow page (can call snowFetch) ---
@@ -290,6 +352,40 @@ async function handleMessage(msg) {
       try {
         await injectAndExec(tab.id, addTimeToParentInPage, [table, sysId, msg.effortMinutes]);
       } catch (e) { /* best effort */ }
+    }
+
+    if (msg.action === "siebelCreateActivity") {
+      let gctTab;
+      try {
+        gctTab = await findGctTab();
+      } catch (e) {
+        // Tab was just opened — tell user to log in
+        throw e;
+      }
+
+      const steps = [];
+      const stepDefs = [
+        { fn: gctNavigateToServiceRequests, args: [], label: "Navigating to Service → All Service Requests" },
+        { fn: gctQuerySR, args: [msg.srNumber], label: "Querying SR " + msg.srNumber },
+        { fn: gctDrillIntoSR, args: [], label: "Opening SR detail" },
+        { fn: gctNavigateActivities, args: [], label: "Opening Activities tab" },
+        { fn: gctCreateNewActivity, args: [], label: "Creating new activity" },
+        { fn: gctFillActivityForm, args: [{ type: msg.activityType, comments: msg.comments, status: msg.status }], label: "Filling activity form" },
+        { fn: gctLogTime, args: [msg.time], label: "Logging " + msg.time + " minutes" },
+        { fn: gctSave, args: [], label: "Saving activity" },
+      ];
+
+      for (const step of stepDefs) {
+        try {
+          await injectAndExecGct(gctTab.id, step.fn, step.args);
+          steps.push({ ok: true, label: step.label });
+        } catch (e) {
+          steps.push({ ok: false, label: step.label + " — " + e.message });
+          throw new Error("Step failed: " + step.label + " — " + e.message);
+        }
+      }
+
+      return { success: true, steps };
     }
 
     return (msg.action === "addComment" || msg.action === "updateTicket") ? { result, timeResult } : result;
