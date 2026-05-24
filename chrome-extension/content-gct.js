@@ -217,7 +217,7 @@
         for (var i = 0; i < selects.length; i++) {
           var opts = selects[i].options;
           for (var j = 0; j < opts.length; j++) {
-            if (opts[j].text.trim().indexOf(text) === 0) {
+            if (opts[j].text.trim() === text || opts[j].text.trim().indexOf(text) === 0) {
               selects[i].value = opts[j].value;
               selects[i].dispatchEvent(new Event("change", { bubbles: true }));
               return true;
@@ -233,6 +233,7 @@
           if (textareas[i].offsetParent !== null) {
             textareas[i].value = text;
             textareas[i].dispatchEvent(new Event("input", { bubbles: true }));
+            textareas[i].dispatchEvent(new Event("change", { bubbles: true }));
             return true;
           }
         }
@@ -301,6 +302,8 @@
             activeEl.value = String(minutes);
             activeEl.dispatchEvent(new Event("input", { bubbles: true }));
             activeEl.dispatchEvent(new Event("change", { bubbles: true }));
+          } else {
+            throw new Error("Could not set minutes value — active element is not an input field");
           }
         });
     },
@@ -319,7 +322,8 @@
         }).then(function () {
           // Check for error dialogs after save
           var doc = getSiebelDoc();
-          var errors = doc.querySelectorAll('[class*="error"], [class*="alert"], [id*="error"]');
+          // Look for Siebel error/alert dialogs — avoid false positives on generic class names
+          var errors = doc.querySelectorAll('[class*="siebel-error"], [class*="sieb-error"], [class*="SWEAlert"], [id*="s_evt"], [class*="jqierror"]');
           for (var i = 0; i < errors.length; i++) {
             if (errors[i].offsetParent !== null) {
               var errText = (errors[i].textContent || "").trim();
