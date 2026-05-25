@@ -1,336 +1,331 @@
-// content-gct.js — Siebel CRM DOM automation
+// content-gct.js — Siebel CRM JavaScript API automation
 // Injected into GCT tab's MAIN world by background.js
+// Uses Siebel's JavaScript API (theApplication(), BusComp, InvokeMethod)
+// and Siebel OpenUI API (SiebelApp.S_App) for internal navigation.
 
 (function () {
   "use strict";
 
-  // --- Frame navigation ---
-  // Siebel uses nested frames. Navigate to the content frame.
-  function getSiebelDoc() {
-    // Try _sweclient frame first (most common)
-    var frames = document.querySelectorAll('frame[name="_sweclient"], iframe[name="_sweclient"]');
-    for (var i = 0; i < frames.length; i++) {
-      try {
-        var doc = frames[i].contentDocument || frames[i].contentWindow.document;
-        if (doc && doc.body) return doc;
-      } catch (e) { /* cross-origin, skip */ }
-    }
-    // Fallback: search all frames for Siebel content
-    var allFrames = document.querySelectorAll("frame, iframe");
-    for (var j = 0; j < allFrames.length; j++) {
-      try {
-        var d = allFrames[j].contentDocument || allFrames[j].contentWindow.document;
-        if (d && d.querySelector('[id*="s_"]')) return d;
-      } catch (e) { /* skip */ }
-    }
-    return document;
+  // --- Dialog suppression ---
+  // Siebel business rules can show window.alert() during page load (e.g.,
+  // "Account Critical Notes"). These block Siebel's async JS initialization,
+  // causing SBL-UIF-00335 errors. Override alert/confirm to capture messages
+  // without blocking. Installed once at injection time, persists for the
+  // entire workflow since subsequent navigation is AJAX-based (no page reload).
+  var _origAlert = window.alert;
+  var _origConfirm = window.confirm;
+  window._siebelDialogs = [];
+  window.alert = function (msg) {
+    window._siebelDialogs.push({ type: "alert", message: String(msg), time: Date.now() });
+  };
+  window.confirm = function (msg) {
+    window._siebelDialogs.push({ type: "confirm", message: String(msg), time: Date.now() });
+    return true;
+  };
+
+  function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
   }
 
-  // --- Wait helper ---
-  function waitFor(testFn, timeout) {
-    timeout = timeout || 30000;
-    return new Promise(function (resolve, reject) {
-      var start = Date.now();
-      function poll() {
-        try {
-          var result = testFn();
-          if (result) return resolve(result);
-        } catch (e) { /* keep polling */ }
-        if (Date.now() - start > timeout) {
-          return reject(new Error("Timeout waiting for element after " + (timeout / 1000) + "s"));
-        }
-        setTimeout(poll, 500);
-      }
-      poll();
-    });
-  }
+  // --- Siebel JS API helpers ---
 
-  // --- Click helper with wait ---
-  function clickAndPause(el) {
-    if (!el) throw new Error("Element not found");
-    el.click();
-    return new Promise(function (resolve) { setTimeout(resolve, 1500); });
-  }
-
-  // --- Find button/link by visible text ---
-  function findByText(doc, text, tag) {
-    if (!doc) doc = getSiebelDoc();
-    var els = doc.querySelectorAll(tag || "a, button, span, div");
-    for (var i = 0; i < els.length; i++) {
-      var t = (els[i].textContent || "").trim();
-      if (t === text || t.indexOf(text) === 0) return els[i];
-    }
-    return null;
+  function getApp() {
+    var app = theApplication();
+    if (!app) throw new Error("Siebel application not available");
+    return app;
   }
 
   // Exports
   window._siebel = {
 
     // Step 1: Navigate to Service → All Service Requests
+    // (Navigation is handled by background.js via chrome.tabs.update)
+    // This is a no-op — we're already on the right view after nav
     navigateToServiceRequests: function () {
-      var doc = getSiebelDoc();
-
-      // Click "Service" in the navigation bar (top-level tab)
-      return waitFor(function () {
-        return findByText(doc, "Service");
-      }).then(function (serviceTab) {
-        return clickAndPause(serviceTab);
-      }).then(function () {
-        // Click "All Service Requests" link
-        return waitFor(function () {
-          return findByText(getSiebelDoc(), "All Service Requests");
-        });
-      }).then(function (link) {
-        return clickAndPause(link);
-      }).then(function () {
-        // Wait for SR List Applet to load
-        return waitFor(function () {
-          var d = getSiebelDoc();
-          return d.querySelector('[id*="Service_Request"]') || findByText(d, "SR #") || findByText(d, "Service Request #");
-        });
-      });
+      var app = getApp();
+      var viewName = app.ActiveViewName();
+      if (!viewName || viewName.indexOf("Service Request") === -1) {
+        throw new Error("Not on a Service Request view. Current view: " + viewName);
+      }
+      return Promise.resolve({ ok: true, view: viewName });
     },
 
-    // Step 2: Query SR number
+    // Step 2: Query SR by number
+    // Uses document.execCommand('insertText') to type into the query row.
+    // Siebel's Presentation Renderer ignores direct value assignments and
+    // API SetSearchSpec calls, but properly processes input events from
+    // execCommand — the same browser path as real keyboard input.
+    // Note: Siebel's PR renders the query row asynchronously after NewQuery,
+    // so we delay before looking for the input element.
     querySR: function (srNumber) {
-      var doc = getSiebelDoc();
+      return new Promise(function (resolve, reject) {
+        var app, applet, bc;
+        try {
+          app = getApp();
+          applet = app.FindApplet("Service Request List Applet");
+          if (!applet) throw new Error("Could not find Service Request List Applet");
+          bc = applet.BusComp();
+          if (!bc) throw new Error("Could not access Service Request business component");
+        } catch (e) {
+          reject(e);
+          return;
+        }
 
-      // Click "Query" button to enter query mode
-      return waitFor(function () {
-        var menuBtn = findByText(doc, "Query") || doc.querySelector('a[title*="Query"], button[title*="Query"]');
-        return menuBtn;
-      }).then(function (queryBtn) {
-        return clickAndPause(queryBtn);
-      }).then(function () {
-        // Find SR# field in the list applet
-        return waitFor(function () {
-          var d = getSiebelDoc();
-          var srField = d.querySelector('input[id*="SR"], input[id*="s_"]') ||
-                        findByText(d, "SR #");
-          return srField;
-        });
-      }).then(function (srField) {
-        // If it's a readonly textbox in a grid, click the parent cell first
-        if (srField.readOnly || srField.tagName === "SPAN") {
-          var cell = srField.closest("td, div[role='gridcell']");
-          if (cell) cell.click();
-          // Now find the actual input that appears
-          return waitFor(function () {
-            var d = getSiebelDoc();
-            return d.querySelector('input:not([readonly])[id*="s_"]') ||
-                   d.querySelector('input[type="text"]:not([readonly])');
-          });
+        // Enter query mode
+        try {
+          bc.InvokeMethod("ClearToQuery");
+          applet.InvokeMethod("NewQuery");
+        } catch (e) {
+          reject(new Error("Failed to enter query mode: " + e.message));
+          return;
         }
-        return srField;
-      }).then(function (input) {
-        // Clear and enter SR number
-        input.value = "";
-        input.value = srNumber;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      }).then(function () {
-        return new Promise(function (resolve) { setTimeout(resolve, 500); });
-      }).then(function () {
-        var d = getSiebelDoc();
-        var goBtn = findByText(d, "Go") || d.querySelector('a[id*="go"], button[id*="go"]');
-        if (goBtn) {
-          return clickAndPause(goBtn);
-        }
-        // If no Go button, try keyboard Enter
-        d.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        return new Promise(function (resolve) { setTimeout(resolve, 2000); });
+
+        // Wait for Siebel PR to render the query row (async DOM update)
+        setTimeout(function () {
+          try {
+            var srInput = document.querySelector('input[name="SR_Number"]:not([readonly])');
+            if (!srInput) {
+              reject(new Error("Could not find SR Number query input"));
+              return;
+            }
+
+            // Type the SR number via execCommand — Siebel's PR processes this
+            srInput.focus();
+            srInput.select();
+            var typed = document.execCommand("insertText", false, srNumber);
+            if (!typed) {
+              reject(new Error("Failed to type SR number into query field"));
+              return;
+            }
+
+            // Execute the query
+            applet.InvokeMethod("ExecuteQuery");
+
+            // Check for Siebel errors after query
+            if (app.GetErrorCount() > 0) {
+              var qerr = app.GetErrorMsg(0) || "Unknown query error";
+              reject(new Error("Query failed: " + qerr));
+              return;
+            }
+
+            if (bc.InvokeMethod("FirstRecord")) {
+              var foundSR = bc.GetFieldValue("SR Number");
+              if (!foundSR) {
+                reject(new Error("SR " + srNumber + " not found"));
+                return;
+              }
+              // Get RowId from URL — Siebel puts the selected record's
+              // RowId in SWERowId0 after query, but BC GetFieldValue("Id")
+              // returns empty in list views.
+              var urlParams = new URLSearchParams(window.location.search);
+              var rowId = urlParams.get("SWERowId0") || "";
+              resolve({ ok: true, srNumber: String(foundSR), rowId: rowId });
+            } else {
+              reject(new Error("SR " + srNumber + " not found. Check the number and try again."));
+            }
+          } catch (e) {
+            reject(new Error("Query failed: " + e.message));
+          }
+        }, 500);
       });
     },
 
-    // Step 3: Drill into SR
+    // Step 3: Drill into SR detail
+    // Uses Siebel's internal GotoView API (SiebelApp.S_App.GotoView)
+    // instead of URL-based navigation. Benefits:
+    //   - No page reload (AJAX-based), so gctInjected flag stays valid
+    //   - Proper state management (no SBL-UIF-00335 errors)
+    //   - Preserves current record context (selected SR carries over)
+    //   - Dialog suppression (installed above) catches Critical Notes alerts
     drillIntoSR: function () {
-      return waitFor(function () {
-        var doc = getSiebelDoc();
-        // SR hyperlink in the first data row
-        var links = doc.querySelectorAll("a");
-        for (var i = 0; i < links.length; i++) {
-          var href = links[i].getAttribute("href") || "";
-          var text = (links[i].textContent || "").trim();
-          if (text.match(/^\d+-\d+/) || href.indexOf("SR") > -1) {
-            return links[i];
+      return new Promise(function (resolve, reject) {
+        try {
+          if (typeof SiebelApp === "undefined" || !SiebelApp.S_App || !SiebelApp.S_App.GotoView) {
+            reject(new Error("SiebelApp.S_App.GotoView not available"));
+            return;
           }
+
+          SiebelApp.S_App.GotoView("Service Request Detail View");
+
+          // Poll for view readiness (GotoView is async AJAX)
+          var attempts = 0;
+          var maxAttempts = 30; // 15 seconds at 500ms intervals
+          var pollInterval = setInterval(function () {
+            attempts++;
+            try {
+              var view = SiebelApp.S_App.GetActiveView();
+              if (view && view.GetName() === "Service Request Detail View") {
+                clearInterval(pollInterval);
+                resolve({ ok: true });
+              }
+            } catch (e) { /* keep polling */ }
+            if (attempts >= maxAttempts) {
+              clearInterval(pollInterval);
+              reject(new Error("Detail view not ready after 15s"));
+            }
+          }, 500);
+        } catch (e) {
+          reject(new Error("Drill-in failed: " + e.message));
         }
-        // Fallback: first cell in first data row matching SR pattern
-        var cells = doc.querySelectorAll("td[role='gridcell'], div[role='gridcell']");
-        for (var j = 0; j < cells.length; j++) {
-          var cellText = (cells[j].textContent || "").trim();
-          if (cellText.match(/^\d+-\d+/)) {
-            return cells[j];
-          }
-        }
-        return null;
-      }).then(function (link) {
-        if (!link) throw new Error("SR hyperlink not found in results");
-        return clickAndPause(link);
-      }).then(function () {
-        return waitFor(function () {
-          var d = getSiebelDoc();
-          return findByText(d, "Activities") || findByText(d, "Service Request") ||
-                 d.querySelector('[id*="Activity"]');
-        });
       });
     },
 
     // Step 4: Navigate to Activities tab
+    // Activities tab is part of Service Request Detail View — verify it loaded
     navigateActivities: function () {
-      return waitFor(function () {
-        return findByText(getSiebelDoc(), "Activities");
-      }).then(function (tab) {
-        return clickAndPause(tab);
-      }).then(function () {
-        return waitFor(function () {
-          var d = getSiebelDoc();
-          return findByText(d, "Activity") || d.querySelector('[id*="Activity"]');
-        });
-      });
+      var app = getApp();
+      try {
+        var activityApplet = app.FindApplet("Activity List Applet With Navigation");
+        if (!activityApplet) {
+          throw new Error("Could not find Activity List Applet");
+        }
+        return Promise.resolve({ ok: true });
+      } catch (e) {
+        throw new Error("Activities tab not loaded: " + e.message);
+      }
     },
 
-    // Step 5: Click "New" in Activity List Applet
+    // Step 5: Create new activity record
     createNewActivity: function () {
-      return waitFor(function () {
-        var doc = getSiebelDoc();
-        var buttons = doc.querySelectorAll("a, button, input[type='button']");
-        for (var i = 0; i < buttons.length; i++) {
-          var text = (buttons[i].textContent || buttons[i].value || "").trim();
-          if (text === "New") return buttons[i];
+      return new Promise(function (resolve, reject) {
+        try {
+          var app = getApp();
+          var applet = app.FindApplet("Activity List Applet With Navigation");
+          if (!applet) {
+            reject(new Error("Could not find Activity List Applet"));
+            return;
+          }
+
+          var bc = applet.BusComp();
+          if (!bc) {
+            reject(new Error("Could not access Activity business component"));
+            return;
+          }
+
+          bc.InvokeMethod("NewRecord", 1); // NewAfter = 1
+          resolve({ ok: true });
+        } catch (e) {
+          reject(new Error("Failed to create activity: " + e.message));
         }
-        return null;
-      }).then(function (newBtn) {
-        if (!newBtn) throw new Error("New Activity button not found");
-        return clickAndPause(newBtn);
       });
     },
 
     // Step 6: Fill the activity form
+    // Uses the Activity List Applet's BC (the Activity Form Applet doesn't
+    // exist in this view configuration — the list applet's BC shares the
+    // same underlying data and SetFieldValue works through it).
     fillActivityForm: function (params) {
-      function getFormDoc() {
-        return getSiebelDoc();
-      }
-
-      function setSelectByText(doc, text) {
-        var selects = doc.querySelectorAll("select");
-        for (var i = 0; i < selects.length; i++) {
-          var opts = selects[i].options;
-          for (var j = 0; j < opts.length; j++) {
-            if (opts[j].text.trim() === text || opts[j].text.trim().indexOf(text) === 0) {
-              selects[i].value = opts[j].value;
-              selects[i].dispatchEvent(new Event("change", { bubbles: true }));
-              return true;
-            }
+      return new Promise(function (resolve, reject) {
+        try {
+          var app = getApp();
+          // Activity Form Applet doesn't exist in Service Request Detail View.
+          // Use the list applet's BC which shares the same underlying data.
+          var applet = app.FindApplet("Activity Form Applet");
+          if (!applet) {
+            applet = app.FindApplet("Activity List Applet With Navigation");
           }
-        }
-        return false;
-      }
-
-      function setTextarea(doc, text) {
-        var textareas = doc.querySelectorAll("textarea");
-        for (var i = 0; i < textareas.length; i++) {
-          if (textareas[i].offsetParent !== null) {
-            textareas[i].value = text;
-            textareas[i].dispatchEvent(new Event("input", { bubbles: true }));
-            textareas[i].dispatchEvent(new Event("change", { bubbles: true }));
-            return true;
+          if (!applet) {
+            reject(new Error("Could not find Activity applet"));
+            return;
           }
-        }
-        var editables = doc.querySelectorAll('[contenteditable="true"]');
-        for (var j = 0; j < editables.length; j++) {
-          editables[j].textContent = text;
-          return true;
-        }
-        return false;
-      }
 
-      return waitFor(function () {
-        var d = getFormDoc();
-        return d.querySelector("textarea, select, input") ? d : null;
-      }).then(function (doc) {
-        if (params.type) setSelectByText(doc, params.type);
-        if (params.status) setSelectByText(doc, params.status);
-        if (params.comments) setTextarea(doc, params.comments);
-        return new Promise(function (resolve) { setTimeout(resolve, 500); });
+          var bc = applet.BusComp();
+          if (!bc) {
+            reject(new Error("Could not access Activity business component"));
+            return;
+          }
+
+          // Set field values using Siebel API
+          if (params.type) {
+            bc.InvokeMethod("SetFieldValue", "Activity Type", params.type);
+          }
+          if (params.comments) {
+            bc.InvokeMethod("SetFieldValue", "Comments", params.comments);
+          }
+          if (params.status) {
+            bc.InvokeMethod("SetFieldValue", "Status", params.status);
+          }
+
+          resolve({ ok: true });
+        } catch (e) {
+          reject(new Error("Failed to fill activity form: " + e.message));
+        }
       });
     },
 
-    // Step 7: Log time in Time List Applet
+    // Step 7: Log time in the Time applet
+    // Uses "Activity Daily Hour Applet" — the actual applet name in
+    // Service Request Detail View (not "Action Time Applet").
     logTime: function (minutes) {
-      function findTimeNewBtn(doc) {
-        var buttons = doc.querySelectorAll("a, button, input[type='button']");
-        var found = [];
-        for (var i = 0; i < buttons.length; i++) {
-          if ((buttons[i].textContent || buttons[i].value || "").trim() === "New") {
-            found.push(buttons[i]);
-          }
-        }
-        return found.length >= 2 ? found[1] : found[0] || null;
-      }
+      return new Promise(function (resolve, reject) {
+        try {
+          var app = getApp();
 
-      return new Promise(function (resolve) { setTimeout(resolve, 500); })
-        .then(function () {
-          var doc = getSiebelDoc();
-          var timeNewBtn = findTimeNewBtn(doc);
-          if (!timeNewBtn) throw new Error("Time applet New button not found");
-          return clickAndPause(timeNewBtn);
-        }).then(function () {
-          return waitFor(function () {
-            var doc = getSiebelDoc();
-            var labels = doc.querySelectorAll("span, label, td");
-            for (var i = 0; i < labels.length; i++) {
-              if ((labels[i].textContent || "").trim() === "Minutes") {
-                var row = labels[i].closest("tr, div");
-                if (row) {
-                  var calcField = row.querySelector('input[type="text"], span[id*="Minutes"]');
-                  if (calcField) return calcField;
-                }
-              }
-            }
-            return doc.querySelector('input[type="text"]:not([readonly])');
-          });
-        }).then(function (minutesField) {
-          if (!minutesField) throw new Error("Minutes field not found");
-          minutesField.click();
-          minutesField.focus();
-          return new Promise(function (resolve) { setTimeout(resolve, 300); });
-        }).then(function () {
-          var doc = getSiebelDoc();
-          var activeEl = doc.activeElement;
-          if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
-            activeEl.value = String(minutes);
-            activeEl.dispatchEvent(new Event("input", { bubbles: true }));
-            activeEl.dispatchEvent(new Event("change", { bubbles: true }));
-          } else {
-            throw new Error("Could not set minutes value — active element is not an input field");
+          // Primary: Activity Daily Hour Applet (verified in live GCT)
+          var timeApplet = app.FindApplet("Activity Daily Hour Applet");
+          if (!timeApplet) {
+            timeApplet = app.FindApplet("Action Time Applet");
           }
-        });
+          if (!timeApplet) {
+            timeApplet = app.FindApplet("Time Applet");
+          }
+          if (!timeApplet) {
+            reject(new Error("Could not find Time Applet"));
+            return;
+          }
+
+          var bc = timeApplet.BusComp();
+          if (!bc) {
+            reject(new Error("Could not access Time business component"));
+            return;
+          }
+
+          bc.InvokeMethod("NewRecord", 1); // NewAfter
+          bc.InvokeMethod("SetFieldValue", "Minutes", String(minutes));
+
+          resolve({ ok: true });
+        } catch (e) {
+          reject(new Error("Failed to log time: " + e.message));
+        }
+      });
     },
 
-    // Step 8: Save (Ctrl+S)
+    // Step 8: Save the record
+    // Uses the Activity List Applet's BC (same as fillActivityForm).
     save: function () {
-      return new Promise(function (resolve) { setTimeout(resolve, 500); })
-        .then(function () {
-          var doc = getSiebelDoc();
-          var eventInit = { key: "s", code: "KeyS", ctrlKey: true, bubbles: true, cancelable: true };
-          doc.dispatchEvent(new KeyboardEvent("keydown", eventInit));
-          if (doc.body) {
-            doc.body.dispatchEvent(new KeyboardEvent("keydown", eventInit));
+      return new Promise(function (resolve, reject) {
+        try {
+          var app = getApp();
+          // Use Activity List Applet's BC (Activity Form Applet may not exist)
+          var applet = app.FindApplet("Activity Form Applet");
+          if (!applet) {
+            applet = app.FindApplet("Activity List Applet With Navigation");
           }
-          return new Promise(function (resolve) { setTimeout(resolve, 3000); });
-        }).then(function () {
-          // Check for error dialogs after save
-          var doc = getSiebelDoc();
-          // Look for Siebel error/alert dialogs — avoid false positives on generic class names
-          var errors = doc.querySelectorAll('[class*="siebel-error"], [class*="sieb-error"], [class*="SWEAlert"], [id*="s_evt"], [class*="jqierror"]');
-          for (var i = 0; i < errors.length; i++) {
-            if (errors[i].offsetParent !== null) {
-              var errText = (errors[i].textContent || "").trim();
-              if (errText) throw new Error("Save error: " + errText);
-            }
+          if (!applet) {
+            reject(new Error("Could not find Activity applet"));
+            return;
           }
-        });
+
+          var bc = applet.BusComp();
+          if (!bc) {
+            reject(new Error("Could not access Activity business component"));
+            return;
+          }
+
+          bc.InvokeMethod("WriteRecord");
+
+          // Check for Siebel errors
+          if (app.GetErrorCount() > 0) {
+            var errText = app.GetErrorMsg(0) || "Unknown Siebel error";
+            reject(new Error("Save failed: " + errText));
+            return;
+          }
+
+          resolve({ ok: true });
+        } catch (e) {
+          reject(new Error("Save failed: " + e.message));
+        }
+      });
     }
   };
 })();

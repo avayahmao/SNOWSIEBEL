@@ -52,13 +52,18 @@ async function injectAndExec(tabId, fn, args) {
   return results?.[0]?.result;
 }
 
+let gctInjected = false;
+
 async function injectAndExecGct(tabId, fn, args) {
-  // Inject content-gct.js into the MAIN world
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    world: "MAIN",
-    files: ["content-gct.js"],
-  });
+  // Only inject content-gct.js once per workflow
+  if (!gctInjected) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      files: ["content-gct.js"],
+    });
+    gctInjected = true;
+  }
   // Execute the step function
   const results = await chrome.scripting.executeScript({
     target: { tabId },
@@ -67,6 +72,91 @@ async function injectAndExecGct(tabId, fn, args) {
     args,
   });
   return results?.[0]?.result;
+}
+
+// Helper: Wait for Siebel to be fully initialized after page load
+// Uses polling since fixed delays are unreliable — Siebel views load asynchronously
+async function pollSiebelReady(tabId, timeoutMs) {
+  timeoutMs = timeoutMs || 30000;
+  var start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      var results = await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        world: "MAIN",
+        func: function () {
+          try {
+            var app = theApplication();
+            if (app && app.ActiveViewName()) return app.ActiveViewName();
+          } catch (e) {}
+          return null;
+        }
+      });
+      if (results && results[0] && results[0].result) return results[0].result;
+    } catch (e) {
+      // Script injection may fail if page context isn't ready yet
+    }
+    await new Promise(function (r) { setTimeout(r, 1000); });
+  }
+  throw new Error("Siebel not ready after " + (timeoutMs / 1000) + "s");
+}
+
+// Helper: Navigate GCT tab to a Siebel view and wait for page load
+function navigateGctTab(tabId, viewName, rowIds) {
+  return new Promise(function (resolve, reject) {
+    var timeout = setTimeout(function () {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error("Navigation timeout after 30s"));
+    }, 30000);
+
+    function listener(tid, info) {
+      if (tid === tabId && info.status === "complete") {
+        clearTimeout(timeout);
+        chrome.tabs.onUpdated.removeListener(listener);
+        // Reset injection flag on navigation since page context is destroyed
+        gctInjected = false;
+        // Poll for Siebel readiness instead of fixed delay
+        pollSiebelReady(tabId).then(resolve, reject);
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(listener);
+
+    // Extract _tid from current tab URL first
+    chrome.tabs.get(tabId, function (tab) {
+      if (chrome.runtime.lastError) {
+        clearTimeout(timeout);
+        chrome.tabs.onUpdated.removeListener(listener);
+        reject(new Error("Tab not found"));
+        return;
+      }
+
+      var url = new URL(tab.url);
+      var tid = url.searchParams.get("_tid") || "";
+      var base = "https://gct.avaya.com/siebel/app/callcenter/enu/";
+      var params = new URLSearchParams();
+      params.set("SWECmd", "GotoView");
+      params.set("SWEView", viewName);
+      params.set("SWERF", "1");
+      params.set("SWEHo", "");
+      params.set("SWEBU", "1");
+      if (tid) params.set("_tid", tid);
+      if (rowIds) {
+        for (var i = 0; i < rowIds.length; i++) {
+          params.set("SWEApplet" + i, rowIds[i].applet);
+          params.set("SWERowId" + i, rowIds[i].rowId);
+        }
+      }
+      var newUrl = base + "?" + params.toString();
+      chrome.tabs.update(tabId, { url: newUrl }, function () {
+        if (chrome.runtime.lastError) {
+          clearTimeout(timeout);
+          chrome.tabs.onUpdated.removeListener(listener);
+          reject(new Error("Failed to navigate: " + chrome.runtime.lastError.message));
+        }
+      });
+    });
+  });
 }
 
 // Step functions — serialized and executed in GCT tab's MAIN world.
@@ -228,26 +318,81 @@ async function handleMessage(msg) {
   // GCT actions use a separate tab and don't need SNOW
   if (msg.action === "siebelCreateActivity") {
     const steps = [];
-    const stepDefs = [
-      { fn: gctNavigateToServiceRequests, args: [], label: "Navigating to Service → All Service Requests" },
-      { fn: gctQuerySR, args: [msg.srNumber], label: "Querying SR " + msg.srNumber },
-      { fn: gctDrillIntoSR, args: [], label: "Opening SR detail" },
-      { fn: gctNavigateActivities, args: [], label: "Opening Activities tab" },
-      { fn: gctCreateNewActivity, args: [], label: "Creating new activity" },
-      { fn: gctFillActivityForm, args: [{ type: msg.activityType, comments: msg.comments, status: msg.status }], label: "Filling activity form" },
-      { fn: gctLogTime, args: [msg.time], label: "Logging " + msg.time + " minutes" },
-      { fn: gctSave, args: [], label: "Saving activity" },
-    ];
-
+    gctInjected = false; // Reset injection flag for new workflow
     const gctTab = await findGctTab();
-    for (const step of stepDefs) {
-      try {
-        await injectAndExecGct(gctTab.id, step.fn, step.args);
-        steps.push({ ok: true, label: step.label });
-      } catch (e) {
-        steps.push({ ok: false, label: step.label + " — " + e.message });
-        throw new Error("Step failed: " + step.label + " — " + e.message);
-      }
+
+    // Step 1: Navigate to All Service Request List View
+    try {
+      await navigateGctTab(gctTab.id, "All Service Request List View", null);
+      steps.push({ ok: true, label: "Navigating to Service → All Service Requests" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Navigating to Service → All Service Requests — " + e.message });
+      throw new Error("Step failed: Navigation — " + e.message);
+    }
+
+    // Step 2: Query SR (returns rowId for drill-in navigation)
+    var queryResult;
+    try {
+      queryResult = await injectAndExecGct(gctTab.id, gctQuerySR, [msg.srNumber]);
+      steps.push({ ok: true, label: "Querying SR " + msg.srNumber });
+    } catch (e) {
+      steps.push({ ok: false, label: "Querying SR " + msg.srNumber + " — " + e.message });
+      throw new Error("Step failed: Query — " + e.message);
+    }
+
+    // Step 3: Drill into SR detail using Siebel's internal GotoView
+    // (AJAX-based navigation — no page reload, no state token issues)
+    try {
+      await injectAndExecGct(gctTab.id, gctDrillIntoSR, []);
+      steps.push({ ok: true, label: "Opening SR detail" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Opening SR detail — " + e.message });
+      throw new Error("Step failed: Drill-in — " + e.message);
+    }
+
+    // Step 4: Verify Activities tab loaded
+    try {
+      await injectAndExecGct(gctTab.id, gctNavigateActivities, []);
+      steps.push({ ok: true, label: "Opening Activities tab" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Opening Activities tab — " + e.message });
+      throw new Error("Step failed: Activities — " + e.message);
+    }
+
+    // Step 5: Create new activity
+    try {
+      await injectAndExecGct(gctTab.id, gctCreateNewActivity, []);
+      steps.push({ ok: true, label: "Creating new activity" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Creating new activity — " + e.message });
+      throw new Error("Step failed: New Activity — " + e.message);
+    }
+
+    // Step 6: Fill activity form
+    try {
+      await injectAndExecGct(gctTab.id, gctFillActivityForm, [{ type: msg.activityType, comments: msg.comments, status: msg.status }]);
+      steps.push({ ok: true, label: "Filling activity form" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Filling activity form — " + e.message });
+      throw new Error("Step failed: Fill Form — " + e.message);
+    }
+
+    // Step 7: Log time
+    try {
+      await injectAndExecGct(gctTab.id, gctLogTime, [msg.time]);
+      steps.push({ ok: true, label: "Logging " + msg.time + " minutes" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Logging " + msg.time + " minutes — " + e.message });
+      throw new Error("Step failed: Log Time — " + e.message);
+    }
+
+    // Step 8: Save
+    try {
+      await injectAndExecGct(gctTab.id, gctSave, []);
+      steps.push({ ok: true, label: "Saving activity" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Saving activity — " + e.message });
+      throw new Error("Step failed: Save — " + e.message);
     }
 
     return { success: true, steps };
