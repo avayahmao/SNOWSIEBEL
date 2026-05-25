@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.8] - 2026-05-25
+
+### Changed
+- **Siebel Note workflow simplified to user-assisted flow** — The Siebel Note tab now opens a new Activity record on the chosen SR and an empty Time row, then hands off to the user. Type, Status, Comments, Send Update Email, working time, and Save are all filled in manually in Siebel.
+- **Siebel Note UI stripped down** — Only the SR Number input and an "Add a Note in Siebel" button remain. Activity Type, Status, Time, and Comments fields removed from the panel.
+- **Headless JS API refactoring of `content-gct.js`** — Restructured into helper-driven modules. Added `findApplet()`, `getBusComp()`, `safeSetField()`, `safeGetField()`, `setFieldByNameList()`, `setFieldViaPM()`, `checkErrors()`.
+- **Robust async polling** — `querySR` now polls up to 10s for the query input to render (replacing fixed 500ms delay); `fillActivityForm` polls up to 3s for the dynamic AVAYA SR Activity applet to load.
+- **Defensive applet handling** — The AVAYA SR Activity applet from the view map exposes PM but not BC, so the workflow now reads BC from the list applet (`Activity List Applet With Navigation`) and PM from the form applet, with all `applet.Name()` calls wrapped in try/catch.
+
+### Added
+- **`AVAYA SR Activity` applet detection** via `view.GetAppletMap()` with regex match `^AVAYA SR Activity` (handles dynamic names like `"... Status - Outbound"` and `"... Management Escalation"`).
+- `setCommentViaEAI()` helper attempting EAI Siebel Adapter `Upsert` (investigated but disabled — user account lacks `SBL-UIF-00275` permission).
+- Diagnostic console logging prefixed with `[GCT]` across query and form-fill steps for easier troubleshooting in the GCT DevTools console.
+
+### Investigated (kept manual due to Avaya server-side scripts)
+- The Activity **Comment** field cannot be persisted via JS API on this Avaya GCT install — PM `LeaveField`, BC `SetFieldValue`, DOM `execCommand`, and EAI `Upsert` all set the value locally but Avaya server scripts clear it during `WriteRecord`. Users fill it manually after the extension opens the new activity.
+- The `*Send Update Email` checkbox (BC field `AVAYA_Send Status Update Email Flag`) has the same revert-on-write behavior. Users uncheck it manually.
+
+### Technical
+- Active Siebel workflow: Navigate → Query SR (DOM `execCommand` for input + applet `ExecuteQuery`) → Drill into Detail View via `SiebelApp.S_App.GotoView()` → Activities tab → `applet.InvokeMethod("NewRecord")` (Activity) → `applet.InvokeMethod("NewRecord")` (empty time row).
+- Dialog suppression for `window.alert`/`window.confirm` preserved — catches "Account Critical Notes" popups that previously broke async init.
+- Background.js step-function proxies retained for `fillActivityForm`, `uncheckSendEmail`, `save`, `setCommentViaEAI`, `logTime` even though they are not in the active workflow — available for future use.
+
 ## [1.7] - 2026-05-22
 
 ### Changed

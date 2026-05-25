@@ -266,32 +266,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
     <label>SR Number</label>
     <input id="siebel-sr" placeholder="e.g. 1-23642931672">
   </div>
-  <div class="form-group">
-    <label>Activity Type</label>
-    <select id="siebel-type">
-      <option value="SR Status - Outbound" selected>SR Status - Outbound</option>
-      <option value="SR Note">SR Note</option>
-    </select>
-  </div>
-  <div class="form-group">
-    <label>Comments</label>
-    <textarea id="siebel-comments" placeholder="Enter activity comments..." required></textarea>
-  </div>
-  <div class="form-group">
-    <label>Time (min)</label>
-    <input id="siebel-time" type="number" value="15" min="1" max="480">
-  </div>
-  <div class="form-group">
-    <label>Status</label>
-    <select id="siebel-status">
-      <option value="Done" selected>Done</option>
-      <option value="In Progress">In Progress</option>
-      <option value="Pending">Pending</option>
-      <option value="Cancelled">Cancelled</option>
-    </select>
+  <div style="font-size:11px;color:#666;margin:6px 0;padding:6px 8px;background:#fff8e1;border:1px solid #ffe082;border-radius:4px">
+    Opens a new Activity record on the SR. Fill in Type, Status, Comments, and Send Email yourself in Siebel, then save.
   </div>
   <div class="btn-row">
-    <button class="btn btn-primary" id="btn-siebel-create">Create Activity &amp; Save</button>
+    <button class="btn btn-primary" id="btn-siebel-create">Add a Note in Siebel</button>
   </div>
   <div id="siebel-result" class="result-box"></div>
 </div>

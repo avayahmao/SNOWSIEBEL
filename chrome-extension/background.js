@@ -160,7 +160,7 @@ function navigateGctTab(tabId, viewName, rowIds) {
 }
 
 // Step functions — serialized and executed in GCT tab's MAIN world.
-// These reference globals defined in content-gct.js.
+// These call headless BC API methods defined in content-gct.js (window._siebel.*).
 
 function gctNavigateToServiceRequests() {
   return window._siebel.navigateToServiceRequests();
@@ -186,12 +186,20 @@ function gctFillActivityForm(params) {
   return window._siebel.fillActivityForm(params);
 }
 
-function gctLogTime(minutes) {
-  return window._siebel.logTime(minutes);
+function gctUncheckSendEmail() {
+  return window._siebel.uncheckSendEmail();
 }
 
 function gctSave() {
   return window._siebel.save();
+}
+
+function gctSetCommentViaEAI(activityId, commentText) {
+  return window._siebel.setCommentViaEAI(activityId, commentText);
+}
+
+function gctLogTime(minutes) {
+  return window._siebel.logTime(minutes);
 }
 
 // --- Functions that run inside the ServiceNow page (can call snowFetch) ---
@@ -319,15 +327,24 @@ async function handleMessage(msg) {
   if (msg.action === "siebelCreateActivity") {
     const steps = [];
     gctInjected = false; // Reset injection flag for new workflow
-    const gctTab = await findGctTab();
+    var gctTab;
+    try {
+      gctTab = await findGctTab();
+    } catch (e) {
+      throw new Error(e.message);
+    }
+
+    // Bring GCT tab to foreground — Siebel JS API requires the tab to be
+    // active for applet operations to execute correctly.
+    await chrome.tabs.update(gctTab.id, { active: true });
 
     // Step 1: Navigate to All Service Request List View
     try {
       await navigateGctTab(gctTab.id, "All Service Request List View", null);
-      steps.push({ ok: true, label: "Navigating to Service → All Service Requests" });
+      steps.push({ ok: true, label: "Navigating to Service \u2192 All Service Requests" });
     } catch (e) {
-      steps.push({ ok: false, label: "Navigating to Service → All Service Requests — " + e.message });
-      throw new Error("Step failed: Navigation — " + e.message);
+      steps.push({ ok: false, label: "Navigating to Service \u2192 All Service Requests \u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Navigation \u2014 " + e.message };
     }
 
     // Step 2: Query SR (returns rowId for drill-in navigation)
@@ -336,8 +353,8 @@ async function handleMessage(msg) {
       queryResult = await injectAndExecGct(gctTab.id, gctQuerySR, [msg.srNumber]);
       steps.push({ ok: true, label: "Querying SR " + msg.srNumber });
     } catch (e) {
-      steps.push({ ok: false, label: "Querying SR " + msg.srNumber + " — " + e.message });
-      throw new Error("Step failed: Query — " + e.message);
+      steps.push({ ok: false, label: "Querying SR " + msg.srNumber + " \u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Query \u2014 " + e.message };
     }
 
     // Step 3: Drill into SR detail using Siebel's internal GotoView
@@ -346,8 +363,8 @@ async function handleMessage(msg) {
       await injectAndExecGct(gctTab.id, gctDrillIntoSR, []);
       steps.push({ ok: true, label: "Opening SR detail" });
     } catch (e) {
-      steps.push({ ok: false, label: "Opening SR detail — " + e.message });
-      throw new Error("Step failed: Drill-in — " + e.message);
+      steps.push({ ok: false, label: "Opening SR detail \u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Drill-in \u2014 " + e.message };
     }
 
     // Step 4: Verify Activities tab loaded
@@ -355,8 +372,8 @@ async function handleMessage(msg) {
       await injectAndExecGct(gctTab.id, gctNavigateActivities, []);
       steps.push({ ok: true, label: "Opening Activities tab" });
     } catch (e) {
-      steps.push({ ok: false, label: "Opening Activities tab — " + e.message });
-      throw new Error("Step failed: Activities — " + e.message);
+      steps.push({ ok: false, label: "Opening Activities tab \u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Activities \u2014 " + e.message };
     }
 
     // Step 5: Create new activity
@@ -364,35 +381,17 @@ async function handleMessage(msg) {
       await injectAndExecGct(gctTab.id, gctCreateNewActivity, []);
       steps.push({ ok: true, label: "Creating new activity" });
     } catch (e) {
-      steps.push({ ok: false, label: "Creating new activity — " + e.message });
-      throw new Error("Step failed: New Activity — " + e.message);
+      steps.push({ ok: false, label: "Creating new activity \u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: New Activity \u2014 " + e.message };
     }
 
-    // Step 6: Fill activity form
+    // Step 6: Create empty time record (best-effort)
+    // The time row is created so the user only needs to type the minutes in Siebel.
     try {
-      await injectAndExecGct(gctTab.id, gctFillActivityForm, [{ type: msg.activityType, comments: msg.comments, status: msg.status }]);
-      steps.push({ ok: true, label: "Filling activity form" });
+      await injectAndExecGct(gctTab.id, gctLogTime, [""]);
+      steps.push({ ok: true, label: "Adding time row (enter minutes in Siebel)" });
     } catch (e) {
-      steps.push({ ok: false, label: "Filling activity form — " + e.message });
-      throw new Error("Step failed: Fill Form — " + e.message);
-    }
-
-    // Step 7: Log time
-    try {
-      await injectAndExecGct(gctTab.id, gctLogTime, [msg.time]);
-      steps.push({ ok: true, label: "Logging " + msg.time + " minutes" });
-    } catch (e) {
-      steps.push({ ok: false, label: "Logging " + msg.time + " minutes — " + e.message });
-      throw new Error("Step failed: Log Time — " + e.message);
-    }
-
-    // Step 8: Save
-    try {
-      await injectAndExecGct(gctTab.id, gctSave, []);
-      steps.push({ ok: true, label: "Saving activity" });
-    } catch (e) {
-      steps.push({ ok: false, label: "Saving activity — " + e.message });
-      throw new Error("Step failed: Save — " + e.message);
+      steps.push({ ok: true, label: "Time row: " + e.message });
     }
 
     return { success: true, steps };

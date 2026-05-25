@@ -933,14 +933,7 @@ const siebelResult = document.getElementById("siebel-result");
 
 document.getElementById("btn-siebel-create").addEventListener("click", async () => {
   const srNumber = document.getElementById("siebel-sr").value.trim();
-  const activityType = document.getElementById("siebel-type").value;
-  const comments = document.getElementById("siebel-comments").value.trim();
-  const time = parseInt(document.getElementById("siebel-time").value, 10);
-  const status = document.getElementById("siebel-status").value;
-
   if (!srNumber) { showError(siebelResult, "Enter an SR number"); return; }
-  if (!comments) { showError(siebelResult, "Enter comments"); return; }
-  if (!time || time < 1) { showError(siebelResult, "Enter a valid time"); return; }
 
   const btn = document.getElementById("btn-siebel-create");
   btn.disabled = true;
@@ -950,11 +943,16 @@ document.getElementById("btn-siebel-create").addEventListener("click", async () 
   try {
     const data = await send({
       action: "siebelCreateActivity",
-      srNumber, activityType, comments, time, status
+      srNumber
     });
 
-    let html = '<div class="success">Activity created and saved for SR ' + esc(srNumber) + '</div>';
-    if (data.steps) {
+    let html = "";
+    if (data.success) {
+      html += '<div class="success">New activity opened for SR ' + esc(srNumber) + '. Fill in the details in Siebel and save.</div>';
+    } else {
+      html += '<div class="error">' + esc(data.error || "Failed") + '</div>';
+    }
+    if (data.steps && data.steps.length > 0) {
       html += '<div style="font-size:11px;margin-top:6px;color:#555">';
       for (const step of data.steps) {
         const icon = step.ok ? '&#10003;' : '&#10007;';
@@ -964,11 +962,10 @@ document.getElementById("btn-siebel-create").addEventListener("click", async () 
       html += '</div>';
     }
     siebelResult.innerHTML = html;
-    document.getElementById("siebel-comments").value = "";
   } catch (e) {
     showError(siebelResult, e.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Create Activity & Save";
+    btn.textContent = "Add a Note in Siebel";
   }
 });
