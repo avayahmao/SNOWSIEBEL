@@ -13,12 +13,13 @@ Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Targ
 ## Key Patterns
 - All API calls go through `snowFetch()` in the page's MAIN world (required for auth)
 - ServiceNow returns `{value, display_value}` objects — use `displayVal()` to extract readable strings
-- No inline onclick handlers (CSP blocks them) — use delegated event listeners with class-based selectors (`.toggle-link`, `.add-note-link`, `.update-link`, `.alarm-close-link`)
+- No inline onclick handlers (CSP blocks them) — use delegated event listeners with class-based selectors (`.toggle-link`, `.add-note-link`, `.update-link`, `.alarm-close-link`, `.view-notes-link`, `.view-notes-more`, `.copy-notes-md`)
 - Table detection from ticket prefix (first 3 chars) via `TABLE_MAP` (defined in both panel.js and background.js)
 - Per-table state configuration via `TABLE_STATES` — labels, classes, transitions, reasons, alarm chains are all keyed by ServiceNow table name
 - `getStateConfig(table)` returns the config for a given table, falling back to `incident` for unknown tables
 - `stateBadge(state, table)` renders state badges using the correct per-table labels and CSS classes
-- Journal entries queried from `sys_journal_field` table
+- Journal entries queried from ticket record's `work_notes` and `comments` fields (bypasses `sys_journal_field` ACL restrictions); duplicate entries with same timestamp + author are merged as "stub - content"
+- "Copy Ticket as MD" button at bottom of notes exports full ticket context + all notes as markdown to clipboard via `textarea` + `execCommand("copy")` (navigator.clipboard doesn't work in sidebar context)
 - `switchTab(name)` handles tab switching; List tab auto-loads "My Open Tickets" on first visit and on startup
 - Ticket cards in List/Query results have inline expandable forms for Add Note, Update Status, and Close Alarm — no tab switching needed
 - Inline forms use mutual exclusion (only one visible per ticket card) and toggle on re-click; forms are inserted after the links container div to keep all links on one line

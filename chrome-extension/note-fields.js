@@ -7,8 +7,35 @@
 
   if (root) {
     root.buildCommentFields = api.buildCommentFields;
+    root.TABLE_MAP = api.TABLE_MAP;
+    root.detectTable = api.detectTable;
+    root.displayVal = api.displayVal;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, function() {
+
+  const TABLE_MAP = {
+    INC: "incident", CHG: "change_request", TAS: "task",
+    RIT: "sc_req_item", REQ: "sc_request", PRB: "problem",
+    KB0: "kb_knowledge", STY: "rm_story", SCT: "sc_task",
+  };
+
+  function detectTable(ticketNumber) {
+    const prefix = (ticketNumber || "").slice(0, 3).toUpperCase();
+    return TABLE_MAP[prefix] || "incident";
+  }
+
+  function displayVal(value) {
+    if (value == null || value === "") return "";
+    if (typeof value === "object") {
+      const dv = value.display_value;
+      if (dv != null && dv !== "") return displayVal(dv);
+      const v = value.value;
+      if (v != null && v !== "") return displayVal(v);
+      return "";
+    }
+    return String(value);
+  }
+
   function formatEffort(effortMinutes) {
     if (!effortMinutes) return null;
 
@@ -39,5 +66,5 @@
     return fields;
   }
 
-  return { buildCommentFields };
+  return { buildCommentFields, TABLE_MAP, detectTable, displayVal };
 });

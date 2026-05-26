@@ -167,18 +167,6 @@ const TABLE_STATES = {
   },
 };
 
-// Ticket prefix → table name (mirrors background.js TABLE_MAP for panel-side lookups)
-const TABLE_MAP = {
-  INC: "incident", CHG: "change_request", TAS: "task",
-  RIT: "sc_req_item", REQ: "sc_request", PRB: "problem",
-  KB0: "kb_knowledge", STY: "rm_story", SCT: "sc_task",
-};
-
-function detectTable(ticketNumber) {
-  const prefix = (ticketNumber || "").slice(0, 3).toUpperCase();
-  return TABLE_MAP[prefix] || "incident";
-}
-
 function getStateConfig(table) {
   return TABLE_STATES[table] || TABLE_STATES.incident;
 }
@@ -218,18 +206,6 @@ function buildNoteTypeOptions(selectedValue) {
     }
   }
   return html;
-}
-
-function displayVal(value) {
-  if (value == null || value === "") return "";
-  if (typeof value === "object") {
-    const dv = value.display_value;
-    if (dv != null && dv !== "") return displayVal(dv);
-    const v = value.value;
-    if (v != null && v !== "") return displayVal(v);
-    return "";
-  }
-  return String(value);
 }
 
 function stateBadge(state, table) {
@@ -365,6 +341,10 @@ function renderJournalInline(container, journal, maxShow) {
     html += '<div style="text-align:center;padding:4px 0">';
     html += '<a class="view-notes-more" data-ticket="' + esc(ticket) + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">Load more (' + remaining + ' remaining)</a>';
     html += '</div>';
+  } else {
+    html += '<div style="text-align:center;padding:8px 0 4px">';
+    html += '<button class="copy-notes-md" data-ticket="' + esc(ticket) + '" style="cursor:pointer;font-size:var(--text-sm);padding:4px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);color:var(--text)">Copy Ticket as MD</button>';
+    html += '</div>';
   }
   container.innerHTML = html;
 }
@@ -477,12 +457,57 @@ document.addEventListener("click", (e) => {
       .then(function(data) {
         var journal = (data && data._journal) ? data._journal : [];
         container._journalData = journal;
+        container._ticketData = data;
         container._shownCount = 5;
         renderJournalInline(container, journal, 5);
       })
       .catch(function(err) {
         container.innerHTML = '<div class="error">' + esc(err.message) + '</div>';
       });
+    return;
+  }
+  // --- Copy Ticket as MD ---
+  if (e.target.classList.contains("copy-notes-md")) {
+    e.preventDefault();
+    var ticket = e.target.dataset.ticket;
+    var notesId = "notes-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
+    var container = document.getElementById(notesId);
+    if (!container || !container._journalData) return;
+    var t = container._ticketData || {};
+    var table = detectTable(ticket);
+    var cfg = getStateConfig(table);
+    var stateVal = typeof t.state === "object" ? t.state.value : t.state;
+    var stateLabel = (cfg.labels && cfg.labels[stateVal]) ? cfg.labels[stateVal] : stateVal;
+    var md = "# " + ticket + "\n\n";
+    md += "- **Description:** " + displayVal(t.short_description) + "\n";
+    md += "- **State:** " + stateLabel + "\n";
+    md += "- **Priority:** " + displayVal(t.priority) + "\n";
+    md += "- **Assigned to:** " + displayVal(t.assigned_to) + "\n";
+    md += "- **Assignment group:** " + displayVal(t.assignment_group) + "\n";
+    md += "- **Updated:** " + displayVal(t.sys_updated_on) + "\n";
+    var desc = displayVal(t.description);
+    if (desc) md += "\n## Details\n\n" + desc + "\n";
+    md += "\n## Notes\n\n";
+    var journal = container._journalData;
+    for (var i = 0; i < journal.length; i++) {
+      var entry = journal[i];
+      var type = displayVal(entry.element) === "work_notes" ? "Work Note" : "Comment";
+      var author = displayVal(entry.sys_created_by);
+      var created = displayVal(entry.sys_created_on);
+      var value = displayVal(entry.value) || "";
+      md += "### " + type + " " + created + " - " + author + "\n\n";
+      md += value + "\n\n---\n\n";
+    }
+    var ta = document.createElement("textarea");
+    ta.value = md;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); e.target.textContent = "Copied!"; }
+    catch(ex) { e.target.textContent = "Copy failed"; }
+    document.body.removeChild(ta);
+    setTimeout(function() { e.target.textContent = "Copy Ticket as MD"; }, 2000);
     return;
   }
   // --- Inline Add Note ---
@@ -631,6 +656,7 @@ document.addEventListener("click", (e) => {
       if (followupEl) {
         followupEl.style.borderColor = "";
         var fd = new Date(followupEl.value);
+        if (isNaN(fd.getTime())) { followupEl.style.borderColor = "var(--danger)"; return; }
         var fp = function(n){ return String(n).padStart(2,'0'); };
         fields.follow_up = fd.getUTCFullYear()+'-'+fp(fd.getUTCMonth()+1)+'-'+fp(fd.getUTCDate())+' '+fp(fd.getUTCHours())+':'+fp(fd.getUTCMinutes())+':00';
       }
@@ -733,10 +759,12 @@ document.addEventListener("click", (e) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
         if (effortInput) effortInput.value = "";
-        
+
         let msgHtml = "";
-        for (let i = 0; i < data.steps.length; i++) {
-          msgHtml += '<div class="step-item step-ok"><span class="step-icon">✓</span><span class="step-label">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + '</span></div>';
+        if (data.steps && data.steps.length) {
+          for (let i = 0; i < data.steps.length; i++) {
+            msgHtml += '<div class="step-item step-ok"><span class="step-icon">✓</span><span class="step-label">Step ' + (i + 1) + '/' + esc(String(data.totalSteps || data.steps.length)) + ': ' + esc(data.steps[i].label) + '</span></div>';
+          }
         }
         msgHtml += '<div class="inline-status-msg success" style="font-weight:600">Closed successfully</div>';
         if (effortMinutes && data.timeResult) {
@@ -1090,7 +1118,7 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
     }
     actionResult.innerHTML = html;
     // Refresh state and hide alarm section (ticket is now closed)
-    refreshActionState(number);
+    await refreshActionState(number);
     document.getElementById("alarm-effort").value = "";
   } catch (e) {
     showError(actionResult, e.message);
@@ -1146,6 +1174,10 @@ document.getElementById("btn-update").addEventListener("click", async () => {
       return;
     }
     var fd = new Date(followup);
+    if (isNaN(fd.getTime())) {
+      showError(actionResult, "Invalid follow-up date");
+      return;
+    }
     var fp = function(n){ return String(n).padStart(2,'0'); };
     fields.follow_up = fd.getUTCFullYear()+'-'+fp(fd.getUTCMonth()+1)+'-'+fp(fd.getUTCDate())+' '+fp(fd.getUTCHours())+':'+fp(fd.getUTCMinutes())+':00';
   }
