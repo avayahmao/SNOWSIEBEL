@@ -8,11 +8,13 @@ Chrome sidebar extension for managing ServiceNow tickets. Uses your existing SSO
 - **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time, and message. Default type is "Internal Only". Visibility is internal only (ACL restriction on public comments).
 - **Action** — Update ticket state with status reason, follow-up date, notes, and effort time. Alarm INCs show a dedicated quick-close section that chains state transitions in one click.
 - **Query** — Search any ticket by number (INC/CHG/PRB/RITM/etc.), view details, CI remote access info (with device credentials), and recent activity log.
+- **View Notes** — Inline expandable journal viewer on every ticket card (List and Query tabs). Shows work notes and comments with color-coded badges, sorted newest-first. Displays 5 entries initially with a "Load more" button.
 
 ### Inline Actions on Ticket Cards
 
 Every ticket card in List and Query results has expandable inline forms — no need to switch tabs:
 
+- **View Notes** — Inline journal viewer with work notes (gold badge) and comments (blue badge), paginated in batches of 5
 - **+ Add Note** — Work Note Type, effort time, message
 - **Update Status** — State, status reason, follow-up date, notes, effort time
 - **Close Alarm** — Note template, close note, effort time (alarm INCs only)
@@ -81,6 +83,12 @@ chrome-extension/
 3. Background injects `content-snow.js` into the ServiceNow tab's MAIN world
 4. `snowFetch()` uses the page's `g_ck` token and session cookies to call ServiceNow REST API
 5. Results flow back: page → background → panel
+
+## Journal Parsing
+
+The View Notes feature reads `work_notes` and `comments` fields directly from the ticket record via `/api/now/table/{table}/{sys_id}?sysparm_fields=work_notes,comments&sysparm_display_value=all`, rather than querying the `sys_journal_field` table. This is because `sys_journal_field` has ACL restrictions on this ServiceNow instance that return empty results via REST API.
+
+ServiceNow returns journal fields as concatenated text where each entry has a header line in the format `YYYY-MM-DD HH:MM:SS - Author Name (Additional Info)`. The parser splits on this pattern (`\n(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - )`), extracts datetime, author, and body from each block, then merges work notes and comments into a single list sorted by date descending.
 
 ## Tech Stack
 

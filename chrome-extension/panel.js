@@ -305,6 +305,37 @@ function showError(el, msg) {
   el.innerHTML = `<div class="error">${esc(msg)}</div>`;
 }
 
+function renderJournalInline(container, journal, maxShow) {
+  if (!journal || journal.length === 0) {
+    container.innerHTML = '<div class="ticket-field" style="color:var(--text-muted);padding:4px 0">No notes found</div>';
+    return;
+  }
+  var ticket = (container.id || "").replace("notes-inline-", "");
+  var visible = journal.slice(0, maxShow);
+  var html = '';
+  for (var i = 0; i < visible.length; i++) {
+    var entry = visible[i];
+    var isWorkNote = displayVal(entry.element) === "work_notes";
+    var author = displayVal(entry.sys_created_by);
+    var created = displayVal(entry.sys_created_on);
+    var value = displayVal(entry.value) || "";
+    var badge = isWorkNote
+      ? '<span class="journal-badge journal-badge-worknote">Work Note</span>'
+      : '<span class="journal-badge journal-badge-comment">Comment</span>';
+    html += '<div class="journal-entry ' + (isWorkNote ? 'journal-entry-worknote' : 'journal-entry-comment') + '">';
+    html += '<div style="margin-bottom:2px">' + badge + ' <span class="journal-meta">' + esc(created) + ' - ' + esc(author) + '</span></div>';
+    html += '<div style="color:var(--text);white-space:pre-wrap">' + esc(value) + '</div>';
+    html += '</div>';
+  }
+  if (maxShow < journal.length) {
+    var remaining = journal.length - maxShow;
+    html += '<div style="text-align:center;padding:4px 0">';
+    html += '<a class="view-notes-more" data-ticket="' + esc(ticket) + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">Load more (' + remaining + ' remaining)</a>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
 // Delegated event handler for links (avoids inline onclick which CSP blocks)
 document.addEventListener("click", (e) => {
   // --- Toggle Device Password section ---
@@ -359,6 +390,67 @@ document.addEventListener("click", (e) => {
       document.getElementById(id + "-full").style.display = "none";
       document.getElementById(id + "-short").style.display = "block";
     }
+  }
+  // --- Inline View Notes ---
+  if (e.target.classList.contains("view-notes-link") || e.target.classList.contains("view-notes-more")) {
+    e.preventDefault();
+    var isLoadMore = e.target.classList.contains("view-notes-more");
+    var ticket = e.target.dataset.ticket;
+    if (!ticket) return;
+    var notesId = "notes-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
+    var container = document.getElementById(notesId);
+
+    // Toggle off (only for the main link, not Load More)
+    if (!isLoadMore && container && container.style.display !== "none") {
+      container.style.display = "none";
+      return;
+    }
+
+    // Load More — increase visible count and re-render
+    if (isLoadMore && container && container._journalData) {
+      var shown = (container._shownCount || 5) + 5;
+      container._shownCount = shown;
+      renderJournalInline(container, container._journalData, shown);
+      return;
+    }
+
+    // Mutual exclusion: hide all inline forms in the same ticket card
+    var card = e.target.closest(".ticket-card");
+    if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
+
+    // If container already has data, just show it
+    if (container && container._journalData) {
+      container.style.display = "block";
+      return;
+    }
+
+    // Create container and fetch
+    if (!container) {
+      var wrapper = document.createElement("div");
+      wrapper.id = notesId;
+      wrapper.className = "inline-form";
+      wrapper.style.background = "transparent";
+      wrapper.style.border = "none";
+      wrapper.style.padding = "0";
+      wrapper.innerHTML = '<div class="loading">Loading notes...</div>';
+      e.target.closest(".action-links-row").insertAdjacentElement("afterend", wrapper);
+      container = wrapper;
+    } else {
+      container.style.display = "block";
+      container.innerHTML = '<div class="loading">Loading notes...</div>';
+    }
+
+    send({ action: "getTicket", ticketNumber: ticket, includeJournal: true })
+      .then(function(data) {
+        var journal = (data && data._journal) ? data._journal : [];
+        container._journalData = journal;
+        container._shownCount = 5;
+        renderJournalInline(container, journal, 5);
+      })
+      .catch(function(err) {
+        container.innerHTML = '<div class="error">' + esc(err.message) + '</div>';
+      });
+    return;
   }
   // --- Inline Add Note ---
   if (e.target.classList.contains("add-note-link")) {
@@ -709,26 +801,9 @@ document.getElementById("btn-query").addEventListener("click", async () => {
         html += formatField("Details", desc);
       }
     }
-    // Journal entries (work notes + comments)
-    const journal = ticket._journal;
-    if (journal && journal.length > 0) {
-      html += `<div class="ticket-field" style="margin-top:6px"><b>Activity:</b></div>`;
-      for (const entry of journal) {
-        const isWorkNote = displayVal(entry.element) === "work_notes";
-        const author = displayVal(entry.sys_created_by) || displayVal(entry.sys_created_by);
-        const created = displayVal(entry.sys_created_on);
-        const value = displayVal(entry.value) || "";
-        const badge = isWorkNote
-          ? '<span class="journal-badge journal-badge-worknote">Work Note</span>'
-          : '<span class="journal-badge journal-badge-comment">Comment</span>';
-        html += `<div class="journal-entry ${isWorkNote ? 'journal-entry-worknote' : 'journal-entry-comment'}">`;
-        html += `<div style="margin-bottom:2px">${badge} <span class="journal-meta">${esc(created)} - ${esc(author)}</span></div>`;
-        html += `<div style="color:var(--text);white-space:pre-wrap">${esc(value)}</div>`;
-        html += `</div>`;
-      }
-    }
     // Inline action links for query results
     html += `<div class="action-links-row">`;
+    html += `<a class="view-notes-link" data-ticket="${esc(displayVal(ticket.number) || number)}">View Notes</a>`;
     html += `<a class="add-note-link" data-ticket="${esc(displayVal(ticket.number) || number)}">+ Add Note</a>`;
     html += `<a class="update-link" data-ticket="${esc(displayVal(ticket.number) || number)}">Update Status</a>`;
     if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(ticket.number) || number)}">Close Alarm</a>`;
@@ -794,6 +869,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       var ciNameList = displayVal(t.cmdb_ci);
       if (ciNameList) html += `<div class="ticket-field" style="color:var(--text-muted)"><b>CI:</b> ${esc(ciNameList)}</div>`;
       html += `<div class="action-links-row">`;
+      html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
       html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
       if (displayVal(t.contact_type) === "Alarm" && lCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}">Close Alarm</a>`;

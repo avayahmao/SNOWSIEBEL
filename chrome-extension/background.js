@@ -362,13 +362,40 @@ function getCiDetailsInPage(ciSysId) {
 }
 
 function getJournalInPage(sysId, tableName) {
-  var params = new URLSearchParams({
-    sysparm_query: "element_id=" + sysId + "^name=" + tableName + "^ORDERBYDESCsys_created_on",
-    sysparm_limit: "20",
-    sysparm_display_value: "all"
-  });
-  return snowFetch("GET", "/api/now/table/sys_journal_field?" + params)
-    .then(function(d) { return d.result || []; });
+  // Read work_notes and comments directly from the ticket record
+  // (bypasses sys_journal_field ACL restrictions)
+  return snowFetch("GET", "/api/now/table/" + tableName + "/" + sysId + "?sysparm_fields=work_notes,comments&sysparm_display_value=all")
+    .then(function(d) {
+      var rec = d.result;
+      if (!rec) return [];
+      var entries = [];
+      var headerRe = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - ([^\n]+)/;
+      function parseJournal(raw, element) {
+        if (!raw) return;
+        // Split on lines that start with a date-time pattern
+        var blocks = raw.split(/\n(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - )/);
+        for (var i = 0; i < blocks.length; i++) {
+          var block = blocks[i].trim();
+          if (!block) continue;
+          var m = block.match(headerRe);
+          if (m) {
+            var body = block.substring(m[0].length).replace(/^\n+/, "");
+            entries.push({
+              element: { value: element, display_value: element },
+              sys_created_on: { value: m[1], display_value: m[1] },
+              sys_created_by: { value: m[2].replace(/ \(.*\)$/, ""), display_value: m[2].replace(/ \(.*\)$/, "") },
+              value: { value: body, display_value: body }
+            });
+          }
+        }
+      }
+      var wn = typeof rec.work_notes === "object" ? rec.work_notes.display_value : rec.work_notes;
+      var cm = typeof rec.comments === "object" ? rec.comments.display_value : rec.comments;
+      parseJournal(wn, "work_notes");
+      parseJournal(cm, "comments");
+      entries.sort(function(a, b) { return (b.sys_created_on.value || "").localeCompare(a.sys_created_on.value || ""); });
+      return entries;
+    });
 }
 
 function debugFieldsInPage() {
@@ -521,6 +548,13 @@ async function handleMessage(msg) {
 
   if (msg.action === "debugFields") {
     return injectAndExec(tab.id, debugFieldsInPage, []);
+  }
+
+  if (msg.action === "getJournal") {
+    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    return injectAndExec(tab.id, getJournalInPage, [sysId, table]);
   }
 
   if (msg.action === "alarmClose") {
