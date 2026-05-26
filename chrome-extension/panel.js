@@ -232,7 +232,16 @@ function parseUpdatedOn(value) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function isStale(updatedOn) {
+// Terminal states — no stale warning for closed/resolved/cancelled tickets
+const FINAL_STATES = new Set(["6","7","8","3","4","5","6","7","105","106"]);
+
+function isFinalState(state) {
+  const raw = typeof state === "object" ? String(state.value) : String(state);
+  return FINAL_STATES.has(raw);
+}
+
+function isStale(updatedOn, state) {
+  if (isFinalState(state)) return false;
   const d = parseUpdatedOn(updatedOn);
   if (!d) return false;
   const diffMs = Date.now() - d.getTime();
@@ -245,14 +254,14 @@ function staleDays(updatedOn) {
   return Math.floor((Date.now() - d.getTime()) / MS_PER_DAY);
 }
 
-function staleBadge(updatedOn) {
-  if (!isStale(updatedOn)) return "";
+function staleBadge(updatedOn, state) {
+  if (!isStale(updatedOn, state)) return "";
   const days = staleDays(updatedOn);
   return `<span class="stale-badge">Stale (${days}d)</span>`;
 }
 
-function staleClass(updatedOn) {
-  return isStale(updatedOn) ? " stale-ticket" : "";
+function staleClass(updatedOn, state) {
+  return isStale(updatedOn, state) ? " stale-ticket" : "";
 }
 
 function formatField(label, value) {
@@ -310,8 +319,21 @@ function showLoading(el) {
   el.innerHTML = '<div class="loading">Loading...</div>';
 }
 
+function userFacingError(msg) {
+  if (msg.includes("Please open a ServiceNow tab") || msg.includes("HTTP 401") || msg.includes("HTTP 403")) {
+    return 'Not logged in to ServiceNow. Open the SNOW tab, log in, then retry.';
+  }
+  return esc(msg);
+}
+
 function showError(el, msg) {
-  el.innerHTML = `<div class="error">${esc(msg)}</div>`;
+  const loginHints = ["Please open a ServiceNow tab", "HTTP 401", "HTTP 403"];
+  const isLoginIssue = loginHints.some(h => msg.includes(h));
+  if (isLoginIssue) {
+    el.innerHTML = '<div class="error">Not logged in to ServiceNow. <a href="https://avaya.service-now.com" target="_blank" style="color:var(--link-color)">Open ServiceNow</a>, log in, then retry.</div>';
+  } else {
+    el.innerHTML = `<div class="error">${esc(msg)}</div>`;
+  }
 }
 
 function renderJournalInline(container, journal, maxShow) {
@@ -462,7 +484,7 @@ document.addEventListener("click", (e) => {
         renderJournalInline(container, journal, 5);
       })
       .catch(function(err) {
-        container.innerHTML = '<div class="error">' + esc(err.message) + '</div>';
+        container.innerHTML = '<div class="error">' + userFacingError(err.message) + '</div>';
       });
     return;
   }
@@ -580,7 +602,7 @@ document.addEventListener("click", (e) => {
         }
         btn.insertAdjacentHTML("afterend", msgHtml);
       })
-      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + esc(err.message) + '</div>'); });
+      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + userFacingError(err.message) + '</div>'); });
   }
   // --- Inline Update Status ---
   if (e.target.classList.contains("update-link")) {
@@ -686,7 +708,7 @@ document.addEventListener("click", (e) => {
         }
         btn.insertAdjacentHTML("afterend", msgHtml);
       })
-      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + esc(err.message) + '</div>'); });
+      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + userFacingError(err.message) + '</div>'); });
   }
   // --- Inline Alarm Close ---
   if (e.target.classList.contains("alarm-close-link")) {
@@ -781,7 +803,7 @@ document.addEventListener("click", (e) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
         const container = btn.parentElement;
-        container.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + esc(err.message) + '</div>');
+        container.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + userFacingError(err.message) + '</div>');
       });
   }
 });
@@ -829,9 +851,9 @@ document.getElementById("btn-query").addEventListener("click", async () => {
       queryResult.innerHTML = `<div class="error">Ticket ${esc(number)} not found</div>`;
       return;
     }
-    const sc = staleClass(ticket.sys_updated_on);
+    const sc = staleClass(ticket.sys_updated_on, ticket.state);
     let html = `<div class="ticket-card${sc}">`;
-    html += `<div>${ticketLink(displayVal(ticket.number) || number)}${staleBadge(ticket.sys_updated_on)}</div>`;
+    html += `<div>${ticketLink(displayVal(ticket.number) || number)}${staleBadge(ticket.sys_updated_on, ticket.state)}</div>`;
     const qSubcls = displayVal(ticket.contact_type);
     const qTable = detectTable(number);
     const qCfg = getStateConfig(qTable);
@@ -925,9 +947,9 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     }
     let html = "";
     for (const t of tickets) {
-      const sc = staleClass(t.sys_updated_on);
+      const sc = staleClass(t.sys_updated_on, t.state);
       html += `<div class="ticket-card${sc}">`;
-      html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on)}</div>`;
+      html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on, t.state)}</div>`;
       const subcls = displayVal(t.contact_type);
       const lTable = detectTable(displayVal(t.number));
       const lCfg = getStateConfig(lTable);

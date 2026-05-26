@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.4] - 2026-05-27
+
+### Fixed
+- **No stale warning on closed tickets** — Stale badge and highlighting no longer appear on tickets in terminal states (Closed, Resolved, Cancelled, etc.) across all table types.
+- **Friendly login prompt** — When the user is not logged in to ServiceNow, a clear "Not logged in" message with a clickable link is shown instead of raw HTTP errors or exception stack traces. Applies to all error surfaces: List tab, Query tab, inline actions, and notes viewer.
+- **Null guard on alarm close steps** — Prevents crash when `data.steps` is undefined in the inline alarm close handler.
+- **Follow-up date validation** — Validates follow-up date before sending to API, preventing NaN values.
+- **Alarm close UI flash fix** — Awaits `refreshActionState` after alarm close to avoid brief UI flicker.
+- **Per-tab GCT injection tracking** — Replaced global `gctInjected` boolean with a per-tab `Set` keyed by tab ID, properly cleaned up when tabs are closed, for tab lifecycle resilience.
+- **Removed external Google Fonts CDN** — Switched to system font fallback to eliminate external dependency and improve load reliability.
+- **Shared utility extraction** — Extracted `TABLE_MAP`, `detectTable`, and `displayVal` into `note-fields.js` module shared between service worker and sidebar panel.
+
 ## [2.3] - 2026-05-26
 
 ### Added
