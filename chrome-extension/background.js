@@ -7,17 +7,6 @@ chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
 });
 
-const TABLE_MAP = {
-  INC: "incident", CHG: "change_request", TAS: "task",
-  RIT: "sc_req_item", REQ: "sc_request", PRB: "problem",
-  KB0: "kb_knowledge", STY: "rm_story", SCT: "sc_task",
-};
-
-function detectTable(ticketNumber) {
-  const prefix = ticketNumber.slice(0, 3).toUpperCase();
-  return TABLE_MAP[prefix] || "incident";
-}
-
 async function findSnowTab() {
   const tabs = await chrome.tabs.query({ url: "*://avaya.service-now.com/*" });
   if (tabs.length === 0) throw new Error("Please open a ServiceNow tab and log in first");
@@ -52,17 +41,17 @@ async function injectAndExec(tabId, fn, args) {
   return results?.[0]?.result;
 }
 
-let gctInjected = false;
+const gctInjectedTabs = new Set();
 
 async function injectAndExecGct(tabId, fn, args) {
-  // Only inject content-gct.js once per workflow
-  if (!gctInjected) {
+  // Only inject content-gct.js once per tab
+  if (!gctInjectedTabs.has(tabId)) {
     await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
       files: ["content-gct.js"],
     });
-    gctInjected = true;
+    gctInjectedTabs.add(tabId);
   }
   // Execute the step function
   const results = await chrome.scripting.executeScript({
@@ -73,6 +62,9 @@ async function injectAndExecGct(tabId, fn, args) {
   });
   return results?.[0]?.result;
 }
+
+// Clean up injection tracking when tabs are closed
+chrome.tabs.onRemoved.addListener((tabId) => { gctInjectedTabs.delete(tabId); });
 
 // Helper: Wait for Siebel to be fully initialized after page load
 // Uses polling since fixed delays are unreliable — Siebel views load asynchronously
@@ -117,7 +109,7 @@ function navigateGctTab(tabId, viewName, rowIds) {
         clearTimeout(timeout);
         chrome.tabs.onUpdated.removeListener(listener);
         // Reset injection flag on navigation since page context is destroyed
-        gctInjected = false;
+        gctInjectedTabs.delete(tabId);
         // Poll for Siebel readiness instead of fixed delay
         pollSiebelReady(tabId).then(resolve, reject);
       }
@@ -435,13 +427,13 @@ async function handleMessage(msg) {
   // GCT actions use a separate tab and don't need SNOW
   if (msg.action === "siebelCreateActivity") {
     const steps = [];
-    gctInjected = false; // Reset injection flag for new workflow
     var gctTab;
     try {
       gctTab = await findGctTab();
     } catch (e) {
       throw new Error(e.message);
     }
+    gctInjectedTabs.delete(gctTab.id); // Reset to force re-injection for new workflow
 
     // Bring GCT tab to foreground
     await chrome.tabs.update(gctTab.id, { active: true });

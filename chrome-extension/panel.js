@@ -167,18 +167,6 @@ const TABLE_STATES = {
   },
 };
 
-// Ticket prefix → table name (mirrors background.js TABLE_MAP for panel-side lookups)
-const TABLE_MAP = {
-  INC: "incident", CHG: "change_request", TAS: "task",
-  RIT: "sc_req_item", REQ: "sc_request", PRB: "problem",
-  KB0: "kb_knowledge", STY: "rm_story", SCT: "sc_task",
-};
-
-function detectTable(ticketNumber) {
-  const prefix = (ticketNumber || "").slice(0, 3).toUpperCase();
-  return TABLE_MAP[prefix] || "incident";
-}
-
 function getStateConfig(table) {
   return TABLE_STATES[table] || TABLE_STATES.incident;
 }
@@ -218,18 +206,6 @@ function buildNoteTypeOptions(selectedValue) {
     }
   }
   return html;
-}
-
-function displayVal(value) {
-  if (value == null || value === "") return "";
-  if (typeof value === "object") {
-    const dv = value.display_value;
-    if (dv != null && dv !== "") return displayVal(dv);
-    const v = value.value;
-    if (v != null && v !== "") return displayVal(v);
-    return "";
-  }
-  return String(value);
 }
 
 function stateBadge(state, table) {
@@ -598,6 +574,7 @@ document.addEventListener("click", (e) => {
       if (followupEl) {
         followupEl.style.borderColor = "";
         var fd = new Date(followupEl.value);
+        if (isNaN(fd.getTime())) { followupEl.style.borderColor = "var(--danger)"; return; }
         var fp = function(n){ return String(n).padStart(2,'0'); };
         fields.follow_up = fd.getUTCFullYear()+'-'+fp(fd.getUTCMonth()+1)+'-'+fp(fd.getUTCDate())+' '+fp(fd.getUTCHours())+':'+fp(fd.getUTCMinutes())+':00';
       }
@@ -700,10 +677,12 @@ document.addEventListener("click", (e) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
         if (effortInput) effortInput.value = "";
-        
+
         let msgHtml = "";
-        for (let i = 0; i < data.steps.length; i++) {
-          msgHtml += '<div class="step-item step-ok"><span class="step-icon">✓</span><span class="step-label">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + '</span></div>';
+        if (data.steps && data.steps.length) {
+          for (let i = 0; i < data.steps.length; i++) {
+            msgHtml += '<div class="step-item step-ok"><span class="step-icon">✓</span><span class="step-label">Step ' + (i + 1) + '/' + esc(String(data.totalSteps || data.steps.length)) + ': ' + esc(data.steps[i].label) + '</span></div>';
+          }
         }
         msgHtml += '<div class="inline-status-msg success" style="font-weight:600">Closed successfully</div>';
         if (effortMinutes && data.timeResult) {
@@ -1046,7 +1025,7 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
     }
     actionResult.innerHTML = html;
     // Refresh state and hide alarm section (ticket is now closed)
-    refreshActionState(number);
+    await refreshActionState(number);
     document.getElementById("alarm-effort").value = "";
   } catch (e) {
     showError(actionResult, e.message);
@@ -1102,6 +1081,10 @@ document.getElementById("btn-update").addEventListener("click", async () => {
       return;
     }
     var fd = new Date(followup);
+    if (isNaN(fd.getTime())) {
+      showError(actionResult, "Invalid follow-up date");
+      return;
+    }
     var fp = function(n){ return String(n).padStart(2,'0'); };
     fields.follow_up = fd.getUTCFullYear()+'-'+fp(fd.getUTCMonth()+1)+'-'+fp(fd.getUTCDate())+' '+fp(fd.getUTCHours())+':'+fp(fd.getUTCMinutes())+':00';
   }
