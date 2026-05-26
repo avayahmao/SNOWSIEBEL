@@ -183,7 +183,42 @@ function getStateConfig(table) {
   return TABLE_STATES[table] || TABLE_STATES.incident;
 }
 
-const NOTE_TYPES = ["", "Customer Feedback", "Detail Clarification", "Internal Only", "Cancellation Information", "Escalation 1", "Status Update", "Next Steps", "ADM 1: Problem Statement", "ADM 2: Details/Findings", "ADM 3: Problem Clarification", "ADM 4: Cause", "ADM 5: Solution", "ADM 6: Knowledge Management", "Manager Comments", "Management Escalation Request", "Management Escalation Response", "Management Escalation Update", "Management Escalation Closure", "General Information", "Customer Comments"];
+// Work note types — loaded dynamically from SNOW sys_choice, with hardcoded fallback
+var NOTE_TYPES = ["", "Customer Feedback", "Detail Clarification", "Internal Only", "Cancellation Information", "Escalation 1", "Status Update", "Next Steps", "ADM 1: Problem Statement", "ADM 2: Details/Findings", "ADM 3: Problem Clarification", "ADM 4: Cause", "ADM 5: Solution", "ADM 6: Knowledge Management", "Manager Comments", "Management Escalation Request", "Management Escalation Response", "Management Escalation Update", "Management Escalation Closure", "General Information", "Customer Comments"];
+var NOTE_TYPE_VALUES = null; // [{label, value}] from SNOW
+
+function loadNoteTypes() {
+  send({ action: "getNoteTypes" }).then(function(types) {
+    if (types && types.length > 0) {
+      NOTE_TYPE_VALUES = types;
+      NOTE_TYPES = [""].concat(types.map(function(t) { return t.label || t.value; }));
+      // Update the Comment tab dropdown
+      var sel = document.getElementById("comment-note-type");
+      if (sel) {
+      var cur = sel.value;
+        sel.innerHTML = buildNoteTypeOptions(cur || "Internal Only");
+      }
+    }
+  }).catch(function() { /* keep fallback */ });
+}
+
+function buildNoteTypeOptions(selectedValue) {
+  var html = '<option value="">-- Select --</option>';
+  if (NOTE_TYPE_VALUES) {
+    for (var i = 0; i < NOTE_TYPE_VALUES.length; i++) {
+      var t = NOTE_TYPE_VALUES[i];
+      var val = t.value || t.label;
+      var lbl = t.label || t.value;
+      var isSelected = (val === selectedValue || lbl === selectedValue);
+      html += '<option value="' + esc(val) + '"' + (isSelected ? ' selected' : '') + '>' + esc(lbl) + '</option>';
+    }
+  } else {
+    for (var j = 1; j < NOTE_TYPES.length; j++) {
+      html += '<option value="' + esc(NOTE_TYPES[j]) + '"' + (NOTE_TYPES[j] === selectedValue ? ' selected' : '') + '>' + esc(NOTE_TYPES[j]) + '</option>';
+    }
+  }
+  return html;
+}
 
 function displayVal(value) {
   if (value == null || value === "") return "";
@@ -217,6 +252,51 @@ function formatField(label, value) {
   return `<div class="ticket-field"><b>${esc(label)}:</b> ${esc(dv)}</div>`;
 }
 
+// Render CI Remote Access block (reusable for query & action tabs)
+function renderCiBlock(ci, prefix) {
+  var h = '';
+  if (ci.ciName) h += '<div class="ticket-field"><b>CI Name:</b> ' + esc(ci.ciName) + '</div>';
+  if (ci.seId) h += '<div class="ticket-field"><b>SE ID:</b> ' + esc(ci.seId) + '</div>';
+  if (ci.ipAddress) h += '<div class="ticket-field"><b>IP:</b> ' + esc(ci.ipAddress) + '</div>';
+  if (ci.natIp) h += '<div class="ticket-field"><b>NAT IP:</b> ' + esc(ci.natIp) + '</div>';
+  if (ci.connectivity) h += '<div class="ticket-field"><b>Connectivity:</b> ' + esc(ci.connectivity) + '</div>';
+  // Device credentials — collapsible section, collapsed by default
+  if (ci.credentials && ci.credentials.length > 0) {
+    var credSecId = prefix + '-cred-' + Math.random().toString(36).slice(2, 6);
+    h += '<div class="ticket-field" style="margin-top:6px">';
+    h += '<a class="toggle-cred" data-cred-id="' + credSecId + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">&#9654; Device Password (' + ci.credentials.length + ')</a>';
+    h += '<div id="' + credSecId + '" style="display:none;margin-top:4px">';
+    for (var ci_i = 0; ci_i < ci.credentials.length; ci_i++) {
+      var cred = ci.credentials[ci_i];
+      var credLabel = (cred.loginType || 'Login') + (cred.accessType ? ' (' + cred.accessType + ')' : '');
+      h += '<div style="margin-top:4px;padding:3px 6px;background:var(--card-bg);border:1px solid var(--border);border-radius:4px">';
+      h += '<div style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:2px">' + esc(credLabel) + '</div>';
+      if (cred.username) h += '<div><b>User:</b> ' + esc(cred.username) + '</div>';
+      if (cred.password) {
+        var pwId = prefix + '-pw-' + ci_i + '-' + Math.random().toString(36).slice(2, 6);
+        h += '<div><b>Pass:</b> '
+          + '<span id="' + pwId + '-mask" class="ci-pw-masked">••••••••</span>'
+          + '<span id="' + pwId + '-text" style="display:none">' + esc(cred.password) + '</span>'
+          + ' <a class="toggle-pw" data-pw-id="' + pwId + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">show</a>'
+          + '</div>';
+      }
+      h += '</div>';
+    }
+    h += '</div></div>';
+  }
+  return h;
+}
+
+// Build SNOW direct-open URL for a ticket number
+function snowUrl(ticketNumber) {
+  var table = detectTable(ticketNumber);
+  return "https://avaya.service-now.com/nav_to.do?uri=" + encodeURIComponent(table + ".do?sysparm_query=number=" + ticketNumber);
+}
+
+function ticketLink(ticketNumber) {
+  return '<a class="sn-link ticket-num" href="#" data-snow-number="' + esc(ticketNumber) + '" title="Open in ServiceNow">' + esc(ticketNumber) + '</a>';
+}
+
 function showLoading(el) {
   el.innerHTML = '<div class="loading">Loading...</div>';
 }
@@ -227,6 +307,47 @@ function showError(el, msg) {
 
 // Delegated event handler for links (avoids inline onclick which CSP blocks)
 document.addEventListener("click", (e) => {
+  // --- Toggle Device Password section ---
+  if (e.target.classList.contains("toggle-cred")) {
+    e.preventDefault();
+    var credId = e.target.dataset.credId;
+    var sec = document.getElementById(credId);
+    if (sec.style.display === 'none') {
+      sec.style.display = 'block';
+      e.target.innerHTML = '&#9660; Device Password (' + sec.children.length + ')';
+    } else {
+      sec.style.display = 'none';
+      e.target.innerHTML = '&#9654; Device Password (' + sec.children.length + ')';
+    }
+    return;
+  }
+  // --- Toggle password visibility ---
+  if (e.target.classList.contains("toggle-pw")) {
+    e.preventDefault();
+    var pwId = e.target.dataset.pwId;
+    var mask = document.getElementById(pwId + '-mask');
+    var text = document.getElementById(pwId + '-text');
+    if (mask.style.display !== 'none') {
+      mask.style.display = 'none'; text.style.display = 'inline'; e.target.textContent = 'hide';
+    } else {
+      mask.style.display = 'inline'; text.style.display = 'none'; e.target.textContent = 'show';
+    }
+    return;
+  }
+  // --- Open ticket in existing SNOW tab ---
+  if (e.target.dataset.snowNumber) {
+    e.preventDefault();
+    var num = e.target.dataset.snowNumber;
+    var url = snowUrl(num);
+    chrome.tabs.query({ url: "*://avaya.service-now.com/*" }, function(tabs) {
+      if (tabs.length > 0) {
+        chrome.tabs.update(tabs[0].id, { url: url, active: true });
+      } else {
+        chrome.tabs.create({ url: url });
+      }
+    });
+    return;
+  }
   if (e.target.classList.contains("toggle-link")) {
     e.preventDefault();
     const action = e.target.dataset.action;
@@ -258,17 +379,17 @@ document.addEventListener("click", (e) => {
       form.style.display = "block";
       return;
     }
-    var noteOpts = NOTE_TYPES.map(function(t) { return '<option value="' + esc(t) + '"' + (t === "Status Update" ? ' selected' : '') + '>' + esc(t || "-- Select --") + '</option>'; }).join("");
-    var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#e3f2fd;border:1px solid #90caf9;border-radius:4px;font-size:11px">'
-      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Work Note Type</label>'
-      + '<select class="inline-note-type" style="width:100%;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px">' + noteOpts + '</select></div>'
-      + '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:end">'
-      + '<div><label style="font-weight:600;display:block;margin-bottom:2px">Effort</label><input class="inline-note-effort" type="text" placeholder="min" style="width:70px;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px"></div>'
-      + '<select class="inline-note-effort-unit" style="padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px"><option value="minutes">min</option><option value="hours">hr</option></select>'
+    var noteOpts = buildNoteTypeOptions('Internal Only');
+    var formHtml = '<div id="' + formId + '" class="inline-form inline-form-note">'
+      + '<div style="margin-bottom:4px"><label>Work Note Type</label>'
+      + '<select class="inline-note-type">' + noteOpts + '</select></div>'
+      + '<div class="effort-row" style="margin-bottom:4px">'
+      + '<div><label>Effort</label><input class="inline-note-effort effort-input" type="text" placeholder="min"></div>'
+      + '<select class="inline-note-effort-unit" style="margin-bottom:0"><option value="minutes">min</option><option value="hours">hr</option></select>'
       + '</div>'
-      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Message</label>'
-      + '<textarea class="inline-note-text" rows="2" style="width:100%;padding:3px 6px;border:1px solid #90caf9;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit;min-height:50px" placeholder="Enter note..."></textarea></div>'
-      + '<button class="btn btn-primary add-note-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:4px 8px;font-size:11px">Submit</button>'
+      + '<div style="margin-bottom:4px"><label>Message</label>'
+      + '<textarea class="inline-note-text" rows="2" placeholder="Enter note..."></textarea></div>'
+      + '<button class="btn btn-primary add-note-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:5px 8px">Submit</button>'
       + '</div>';
     e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
   }
@@ -283,7 +404,7 @@ document.addEventListener("click", (e) => {
     
     const textEl = form.querySelector(".inline-note-text");
     const text = textEl.value.trim();
-    if (!text) { textEl.style.borderColor = "#c62828"; return; }
+    if (!text) { textEl.style.borderColor = "var(--danger)"; return; }
     textEl.style.borderColor = "";
     
     const noteType = form.querySelector(".inline-note-type").value;
@@ -302,14 +423,14 @@ document.addEventListener("click", (e) => {
         textEl.value = "";
         effortEl.value = "";
         
-        var msgHtml = '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600;margin-top:4px">Note added</div>';
+        var msgHtml = '<div class="inline-status-msg success">Note added</div>';
         if (effortMinutes && data && data.timeResult) {
-          if (data.timeResult.error) msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
-          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
+          if (data.timeResult.error) msgHtml += '<div class="inline-status-msg error" style="margin-top:2px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="status-note status-note-success">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
         }
         btn.insertAdjacentHTML("afterend", msgHtml);
       })
-      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
+      .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + esc(err.message) + '</div>'); });
   }
   // --- Inline Update Status ---
   if (e.target.classList.contains("update-link")) {
@@ -340,23 +461,23 @@ document.addEventListener("click", (e) => {
       stateOpts += '<option value="' + esc(sv) + '">' + esc(iuCfg.labels[sv] || sv) + '</option>';
     }
     var followupHtml = iuCfg.hasFollowUp
-      ? '<div class="inline-followup-group" style="display:none;margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Follow-up Date</label><input class="inline-followup" type="date" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"></div>'
+      ? '<div class="inline-followup-group" style="display:none;margin-bottom:4px"><label>Follow-up Date & Time</label><input class="inline-followup" type="datetime-local"></div>'
       : '';
-    var formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;font-size:11px">'
+    var formHtml = '<div id="' + formId + '" class="inline-form inline-form-update">'
       + '<div style="margin-bottom:4px;display:flex;gap:4px">'
-      + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">State</label>'
-      + '<select class="inline-state-select" data-table="' + esc(iuTable) + '" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px">' + stateOpts + '</select></div>'
-      + '<div style="flex:1"><label style="font-weight:600;display:block;margin-bottom:2px">Status Reason</label>'
-      + '<select class="inline-reason-select" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"><option value="">Select state first</option></select></div>'
+      + '<div style="flex:1"><label>State</label>'
+      + '<select class="inline-state-select" data-table="' + esc(iuTable) + '">' + stateOpts + '</select></div>'
+      + '<div style="flex:1"><label>Status Reason</label>'
+      + '<select class="inline-reason-select"><option value="">Select state first</option></select></div>'
       + '</div>'
       + followupHtml
-      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Notes</label>'
-      + '<textarea class="inline-update-notes" rows="2" style="width:100%;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit;min-height:50px" placeholder="Optional notes..."></textarea></div>'
-      + '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:end">'
-      + '<div><label style="font-weight:600;display:block;margin-bottom:2px">Effort</label><input class="inline-update-effort" type="text" placeholder="min" style="width:70px;padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"></div>'
-      + '<select class="inline-update-effort-unit" style="padding:3px 6px;border:1px solid #ffcc80;border-radius:3px;font-size:11px"><option value="minutes">min</option><option value="hours">hr</option></select>'
+      + '<div style="margin-bottom:4px"><label>Notes</label>'
+      + '<textarea class="inline-update-notes" rows="2" placeholder="Optional notes..."></textarea></div>'
+      + '<div class="effort-row" style="margin-bottom:4px">'
+      + '<div><label>Effort</label><input class="inline-update-effort effort-input" type="text" placeholder="min"></div>'
+      + '<select class="inline-update-effort-unit" style="margin-bottom:0"><option value="minutes">min</option><option value="hours">hr</option></select>'
       + '</div>'
-      + '<button class="btn btn-primary update-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:4px 8px;font-size:11px">Update</button>'
+      + '<button class="btn btn-primary update-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:5px 8px">Update</button>'
       + '</div>';
     e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
   }
@@ -373,7 +494,7 @@ document.addEventListener("click", (e) => {
     const state = stateEl.value;
     const ueTable = stateEl.dataset.table || "incident";
     const ueCfg = getStateConfig(ueTable);
-    if (!state) { stateEl.style.borderColor = "#c62828"; return; }
+    if (!state) { stateEl.style.borderColor = "var(--danger)"; return; }
     stateEl.style.borderColor = "";
 
     const fields = { state: state };
@@ -381,8 +502,13 @@ document.addEventListener("click", (e) => {
     if (reason && reason !== "-- None --") fields.u_status_reason = reason;
     if (state === ueCfg.pendingState && ueCfg.hasFollowUp) {
       const followupEl = form.querySelector(".inline-followup");
-      if (followupEl && !followupEl.value) { followupEl.style.borderColor = "#c62828"; return; }
-      if (followupEl) { followupEl.style.borderColor = ""; fields.follow_up = followupEl.value; }
+      if (followupEl && !followupEl.value) { followupEl.style.borderColor = "var(--danger)"; return; }
+      if (followupEl) {
+        followupEl.style.borderColor = "";
+        var fd = new Date(followupEl.value);
+        var fp = function(n){ return String(n).padStart(2,'0'); };
+        fields.follow_up = fd.getUTCFullYear()+'-'+fp(fd.getUTCMonth()+1)+'-'+fp(fd.getUTCDate())+' '+fp(fd.getUTCHours())+':'+fp(fd.getUTCMinutes())+':00';
+      }
     }
     const notesEl = form.querySelector(".inline-update-notes");
     const notes = notesEl.value.trim();
@@ -402,14 +528,14 @@ document.addEventListener("click", (e) => {
         if (notesEl) notesEl.value = "";
         if (effortEl) effortEl.value = "";
         
-        var msgHtml = '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600;margin-top:4px">State updated to ' + esc(ueCfg.labels[state] || state) + '</div>';
+        var msgHtml = '<div class="inline-status-msg success" style="font-weight:600">State updated to ' + esc(ueCfg.labels[state] || state) + '</div>';
         if (effortMinutes && data && data.timeResult) {
-          if (data.timeResult.error) msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
-          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
+          if (data.timeResult.error) msgHtml += '<div class="inline-status-msg error" style="margin-top:2px">Time error: ' + esc(data.timeResult.error) + '</div>';
+          else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="status-note status-note-success">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
         }
         btn.insertAdjacentHTML("afterend", msgHtml);
       })
-      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; btn.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>'); });
+      .catch((err) => { btn.disabled = false; btn.textContent = "Update"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + esc(err.message) + '</div>'); });
   }
   // --- Inline Alarm Close ---
   if (e.target.classList.contains("alarm-close-link")) {
@@ -431,20 +557,20 @@ document.addEventListener("click", (e) => {
       return;
     }
     const defaultTmpl = "Investigated alarm, confirmed cleared. Closing ticket.";
-    const formHtml = '<div id="' + formId + '" class="inline-form" style="margin-top:6px;padding:6px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:4px;font-size:11px">'
-      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Note Template</label>'
-      + '<select class="alarm-tmpl-select" data-form="' + formId + '" style="width:100%;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px">'
+    const formHtml = '<div id="' + formId + '" class="inline-form inline-form-alarm">'
+      + '<div style="margin-bottom:4px"><label>Note Template</label>'
+      + '<select class="alarm-tmpl-select" data-form="' + formId + '">'
       + '<option value="Investigated alarm, confirmed cleared. Closing ticket.">Investigated alarm, confirmed cleared</option>'
       + '<option value="Alarm(s) cleared on access. Verified system restored to normal operation.">Alarms cleared on access</option>'
       + '<option value="False alarm confirmed. No further action required.">False alarm confirmed</option>'
       + '<option value="">Custom</option>'
       + '</select></div>'
-      + '<div style="margin-bottom:4px"><label style="font-weight:600;display:block;margin-bottom:2px">Close Note</label>'
-      + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="2" style="width:100%;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px;resize:vertical;font-family:inherit">' + esc(defaultTmpl) + '</textarea></div>'
-      + '<div style="display:flex;gap:4px;align-items:end">'
-      + '<div><input class="alarm-effort-input" data-form="' + formId + '" type="text" placeholder="Effort" style="width:70px;padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px"></div>'
-      + '<select class="alarm-effort-unit" style="padding:3px 6px;border:1px solid #a5d6a7;border-radius:3px;font-size:11px"><option value="minutes">min</option><option value="hours">hr</option></select>'
-      + '<button class="btn btn-success alarm-close-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="flex:1;padding:4px 8px;font-size:11px">Close Alarm</button>'
+      + '<div style="margin-bottom:4px"><label>Close Note</label>'
+      + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="2">' + esc(defaultTmpl) + '</textarea></div>'
+      + '<div class="effort-row">'
+      + '<div><label>Effort</label><input class="alarm-effort-input effort-input" data-form="' + formId + '" type="text" placeholder="min"></div>'
+      + '<select class="alarm-effort-unit" style="margin-bottom:0"><option value="minutes">min</option><option value="hours">hr</option></select>'
+      + '<button class="btn btn-success alarm-close-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="flex:1;padding:5px 8px">Close Alarm</button>'
       + '</div>'
       + '</div>';
     e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
@@ -463,7 +589,7 @@ document.addEventListener("click", (e) => {
     const effortUnitEl = form ? form.querySelector(".alarm-effort-unit") : null;
     const note = noteInput ? noteInput.value.trim() : "";
     if (!note) {
-      if (noteInput) noteInput.style.borderColor = "#c62828";
+      if (noteInput) noteInput.style.borderColor = "var(--danger)";
       return;
     }
     if (noteInput) noteInput.style.borderColor = "";
@@ -485,14 +611,14 @@ document.addEventListener("click", (e) => {
         
         let msgHtml = "";
         for (let i = 0; i < data.steps.length; i++) {
-          msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
+          msgHtml += '<div class="step-item step-ok"><span class="step-icon">✓</span><span class="step-label">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + '</span></div>';
         }
-        msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-weight:600">Closed successfully</div>';
+        msgHtml += '<div class="inline-status-msg success" style="font-weight:600">Closed successfully</div>';
         if (effortMinutes && data.timeResult) {
           if (data.timeResult.error) {
-            msgHtml += '<div class="inline-status-msg" style="color:#e65100;font-size:10px">Time error: ' + esc(data.timeResult.error) + '</div>';
+            msgHtml += '<div class="inline-status-msg error" style="margin-top:2px">Time error: ' + esc(data.timeResult.error) + '</div>';
           } else {
-            msgHtml += '<div class="inline-status-msg" style="color:#2e7d32;font-size:10px">Effort: ' + effortMinutes + ' min recorded</div>';
+            msgHtml += '<div class="status-note status-note-success">Effort: ' + effortMinutes + ' min recorded</div>';
           }
         }
         const container = btn.parentElement;
@@ -502,7 +628,7 @@ document.addEventListener("click", (e) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
         const container = btn.parentElement;
-        container.insertAdjacentHTML("afterend", '<div class="inline-err" style="color:#c62828;font-size:10px;margin-top:2px">' + esc(err.message) + '</div>');
+        container.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + esc(err.message) + '</div>');
       });
   }
 });
@@ -545,24 +671,32 @@ document.getElementById("btn-query").addEventListener("click", async () => {
   if (!number) return;
   showLoading(queryResult);
   try {
-    const ticket = await send({ action: "getTicket", ticketNumber: number, includeJournal: true });
+    const ticket = await send({ action: "getTicket", ticketNumber: number, includeJournal: true, includeCi: true });
     if (!ticket) {
       queryResult.innerHTML = `<div class="error">Ticket ${esc(number)} not found</div>`;
       return;
     }
     let html = `<div class="ticket-card">`;
-    html += `<div class="ticket-num">${esc(displayVal(ticket.number) || number)}</div>`;
+    html += `<div>${ticketLink(displayVal(ticket.number) || number)}</div>`;
     const qSubcls = displayVal(ticket.contact_type);
     const qTable = detectTable(number);
     const qCfg = getStateConfig(qTable);
-    if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
+    if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<span class="alarm-badge">Alarm</span>`;
     html += formatField("Description", ticket.short_description);
     const stateRaw = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
-    html += `<div class="ticket-field"><b>State:</b> ${stateBadge(ticket.state, qTable)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
+    html += `<div class="ticket-field"><b>State:</b> ${stateBadge(ticket.state, qTable)}</div>`;
     html += formatField("Priority", ticket.priority);
     html += formatField("Assigned to", ticket.assigned_to);
     html += formatField("Assignment group", ticket.assignment_group);
     html += formatField("Updated", ticket.sys_updated_on);
+    // CI Remote Access info
+    if (ticket._ci && !ticket._ci._error) {
+      html += `<div class="ticket-field" style="margin-top:8px"><b>Remote Access:</b></div>`;
+      html += renderCiBlock(ticket._ci, 'q');
+    } else if (ticket.cmdb_ci && displayVal(ticket.cmdb_ci)) {
+      const ciError = (ticket._ci && ticket._ci._error) ? ' (' + esc(ticket._ci._error) + ')' : ' (details unavailable)';
+      html += `<div class="ticket-field" style="margin-top:8px;color:var(--text-muted)"><b>CI:</b> ${esc(displayVal(ticket.cmdb_ci))}${ciError}</div>`;
+    }
     const desc = displayVal(ticket.description);
     if (desc) {
       if (desc.length > 300) {
@@ -585,19 +719,19 @@ document.getElementById("btn-query").addEventListener("click", async () => {
         const created = displayVal(entry.sys_created_on);
         const value = displayVal(entry.value) || "";
         const badge = isWorkNote
-          ? '<span style="background:#fff3e0;color:#e65100;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">Work Note</span>'
-          : '<span style="background:#e3f2fd;color:#1565c0;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">Comment</span>';
-        html += `<div style="margin-top:4px;padding:4px 6px;background:#fafafa;border-left:3px solid ${isWorkNote ? '#e65100' : '#1565c0'};font-size:11px">`;
-        html += `<div style="margin-bottom:2px">${badge} <span style="color:#999">${esc(created)} - ${esc(author)}</span></div>`;
-        html += `<div style="color:#333;white-space:pre-wrap">${esc(value)}</div>`;
+          ? '<span class="journal-badge journal-badge-worknote">Work Note</span>'
+          : '<span class="journal-badge journal-badge-comment">Comment</span>';
+        html += `<div class="journal-entry ${isWorkNote ? 'journal-entry-worknote' : 'journal-entry-comment'}">`;
+        html += `<div style="margin-bottom:2px">${badge} <span class="journal-meta">${esc(created)} - ${esc(author)}</span></div>`;
+        html += `<div style="color:var(--text);white-space:pre-wrap">${esc(value)}</div>`;
         html += `</div>`;
       }
     }
     // Inline action links for query results
-    html += `<div style="margin-top:4px;font-size:11px">`;
-    html += `<a class="add-note-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
-    html += `<a class="update-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
-    if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(ticket.number) || number)}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
+    html += `<div class="action-links-row">`;
+    html += `<a class="add-note-link" data-ticket="${esc(displayVal(ticket.number) || number)}">+ Add Note</a>`;
+    html += `<a class="update-link" data-ticket="${esc(displayVal(ticket.number) || number)}">Update Status</a>`;
+    if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(ticket.number) || number)}">Close Alarm</a>`;
     html += `</div></div>`;
     queryResult.innerHTML = html;
   } catch (e) {
@@ -646,21 +780,23 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     let html = "";
     for (const t of tickets) {
       html += `<div class="ticket-card">`;
-      html += `<div class="ticket-num">${esc(displayVal(t.number))}</div>`;
+      html += `<div>${ticketLink(displayVal(t.number))}</div>`;
       const subcls = displayVal(t.contact_type);
       const lTable = detectTable(displayVal(t.number));
       const lCfg = getStateConfig(lTable);
-      if (subcls === "Alarm" && lCfg.supportsAlarmClose) html += `<span style="display:inline-block;background:#ede7f6;color:#4527a0;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin:2px 0 3px">Alarm</span>`;
+      if (subcls === "Alarm" && lCfg.supportsAlarmClose) html += `<span class="alarm-badge">Alarm</span>`;
       html += formatField("Description", t.short_description);
       const stateRaw = typeof t.state === "object" ? t.state.value : t.state;
-      html += `<div class="ticket-field"><b>State:</b> ${stateBadge(t.state, lTable)} <span style="color:#999;font-size:10px">(${esc(stateRaw)})</span></div>`;
+      html += `<div class="ticket-field"><b>State:</b> ${stateBadge(t.state, lTable)}</div>`;
       html += formatField("Priority", t.priority);
       html += formatField("Assigned to", t.assigned_to);
       html += formatField("Updated", t.sys_updated_on);
-      html += `<div style="margin-top:4px;font-size:11px">`;
-      html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">+ Add Note</a>`;
-      html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}" style="color:#293e6b;cursor:pointer;margin-right:12px">Update Status</a>`;
-      if (displayVal(t.contact_type) === "Alarm" && lCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}" style="color:#2e7d32;cursor:pointer;font-weight:600;font-size:11px">Close Alarm</a>`;
+      var ciNameList = displayVal(t.cmdb_ci);
+      if (ciNameList) html += `<div class="ticket-field" style="color:var(--text-muted)"><b>CI:</b> ${esc(ciNameList)}</div>`;
+      html += `<div class="action-links-row">`;
+      html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
+      html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
+      if (displayVal(t.contact_type) === "Alarm" && lCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}">Close Alarm</a>`;
       html += `</div>`;
       html += `</div>`;
     }
@@ -696,12 +832,12 @@ document.getElementById("btn-comment").addEventListener("click", async () => {
     let msg = '<div class="success">Note added successfully</div>';
     if (effortMinutes && data && data.timeResult) {
       if (data.timeResult.error) {
-        msg += '<div style="color:#e65100;font-size:11px;margin-top:4px">Time worked error: ' + esc(data.timeResult.error) + '</div>';
+        msg += '<div class="status-note status-note-warning">Time worked error: ' + esc(data.timeResult.error) + '</div>';
       } else {
         var hrs = Math.floor(effortMinutes / 60);
         var mins = effortMinutes % 60;
         var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' minutes';
-        msg += '<div style="font-size:11px;margin-top:4px;color:#2e7d32">Effort: ' + esc(timeStr) + ' recorded</div>';
+        msg += '<div class="status-note status-note-success">Effort: ' + esc(timeStr) + ' recorded</div>';
       }
     }
     commentResult.innerHTML = msg;
@@ -738,7 +874,7 @@ function buildActionStateOptions(table, allowedStates) {
 async function refreshActionState(number) {
   if (!number) return;
   try {
-    var ticket = await send({ action: "getTicket", ticketNumber: number });
+    var ticket = await send({ action: "getTicket", ticketNumber: number, includeCi: true });
     if (!ticket) { currentTicketState = null; currentActionTable = "incident"; document.getElementById("alarm-close-group").style.display = "none"; return; }
     var raw = typeof ticket.state === "object" ? ticket.state.value : ticket.state;
     currentTicketState = String(raw);
@@ -765,7 +901,16 @@ async function refreshActionState(number) {
     }
     // Show current state info
     var stateLabel = cfg.labels[currentTicketState] || currentTicketState;
-    actionResult.innerHTML = '<div style="color:#666;font-size:11px">Current state: ' + esc(stateLabel) + (isAlarm ? ' &mdash; <span style="color:#2e7d32">Alarm INC detected</span>' : '') + '</div>';
+    var stateHtml = '<div class="current-state-info">Current state: ' + esc(stateLabel) + (isAlarm ? ' &mdash; <span style="color:var(--success);font-weight:500">Alarm INC detected</span>' : '') + '</div>';
+    // CI Remote Access info
+    if (ticket._ci && !ticket._ci._error) {
+      stateHtml += '<div class="ticket-field" style="margin-top:8px"><b>Remote Access:</b></div>';
+      stateHtml += renderCiBlock(ticket._ci, 'a');
+    } else if (ticket.cmdb_ci && displayVal(ticket.cmdb_ci)) {
+      var ciErr = (ticket._ci && ticket._ci._error) ? ' (' + esc(ticket._ci._error) + ')' : ' (details unavailable)';
+      stateHtml += '<div class="ticket-field" style="margin-top:8px;color:var(--text-muted)"><b>CI:</b> ' + esc(displayVal(ticket.cmdb_ci)) + ciErr + '</div>';
+    }
+    actionResult.innerHTML = stateHtml;
   } catch (e) {
     currentTicketState = null;
     currentActionTable = "incident";
@@ -810,17 +955,17 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
     // Show step-by-step progress
     let html = "";
     for (let i = 0; i < data.steps.length; i++) {
-      html += '<div style="color:#2e7d32;font-size:11px">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + ' ✓</div>';
+      html += '<div class="step-item step-ok"><span class="step-icon">✓</span><span class="step-label">Step ' + (i + 1) + '/' + data.totalSteps + ': ' + esc(data.steps[i].label) + '</span></div>';
     }
     html += '<div class="success">Alarm ticket closed successfully</div>';
     if (effortMinutes && data.timeResult) {
       if (data.timeResult.error) {
-        html += '<div style="color:#e65100;font-size:11px;margin-top:4px">Time worked error: ' + esc(data.timeResult.error) + '</div>';
+        html += '<div class="status-note status-note-warning">Time worked error: ' + esc(data.timeResult.error) + '</div>';
       } else {
         var hrs = Math.floor(effortMinutes / 60);
         var mins = effortMinutes % 60;
         var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' minutes';
-        html += '<div style="font-size:11px;margin-top:4px;color:#2e7d32">Effort: ' + esc(timeStr) + ' recorded</div>';
+        html += '<div class="status-note status-note-success">Effort: ' + esc(timeStr) + ' recorded</div>';
       }
     }
     actionResult.innerHTML = html;
@@ -880,7 +1025,9 @@ document.getElementById("btn-update").addEventListener("click", async () => {
       showError(actionResult, "Follow-up date is required for Pending state");
       return;
     }
-    fields.follow_up = followup;
+    var fd = new Date(followup);
+    var fp = function(n){ return String(n).padStart(2,'0'); };
+    fields.follow_up = fd.getUTCFullYear()+'-'+fp(fd.getUTCMonth()+1)+'-'+fp(fd.getUTCDate())+' '+fp(fd.getUTCHours())+':'+fp(fd.getUTCMinutes())+':00';
   }
   const resolutionNote = document.getElementById("action-resolution").value.trim();
   if (resolutionNote) {
@@ -904,12 +1051,12 @@ document.getElementById("btn-update").addEventListener("click", async () => {
     let msg = '<div class="success">State updated' + (resolutionNote ? ' with note' : '') + '</div>';
     if (effortMinutes && data && data.timeResult) {
       if (data.timeResult.error) {
-        msg += '<div style="color:#e65100;font-size:11px;margin-top:4px">Time worked error: ' + esc(data.timeResult.error) + '</div>';
+        msg += '<div class="status-note status-note-warning">Time worked error: ' + esc(data.timeResult.error) + '</div>';
       } else {
         var hrs = Math.floor(effortMinutes / 60);
         var mins = effortMinutes % 60;
         var timeStr = hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' minutes';
-        msg += '<div style="font-size:11px;margin-top:4px;color:#2e7d32">Effort: ' + esc(timeStr) + ' recorded</div>';
+        msg += '<div class="status-note status-note-success">Effort: ' + esc(timeStr) + ' recorded</div>';
       }
     }
     actionResult.innerHTML = msg;
@@ -922,6 +1069,9 @@ document.getElementById("btn-update").addEventListener("click", async () => {
   }
 });
 
+// --- Load note types from SNOW ---
+loadNoteTypes();
+
 // --- Auto-load My Open Tickets on startup (List is default tab) ---
 listAutoLoaded = true;
 document.getElementById("list-preset").value = "my-open";
@@ -932,8 +1082,8 @@ document.getElementById("btn-list").click();
 const siebelResult = document.getElementById("siebel-result");
 
 document.getElementById("btn-siebel-create").addEventListener("click", async () => {
-  const srNumber = document.getElementById("siebel-sr").value.trim();
-  if (!srNumber) { showError(siebelResult, "Enter an SR number"); return; }
+  const input = document.getElementById("siebel-sr").value.trim();
+  if (!input) { showError(siebelResult, "Enter an SR number or Activity ID"); return; }
 
   const btn = document.getElementById("btn-siebel-create");
   btn.disabled = true;
@@ -943,21 +1093,23 @@ document.getElementById("btn-siebel-create").addEventListener("click", async () 
   try {
     const data = await send({
       action: "siebelCreateActivity",
-      srNumber
+      srNumber: input
     });
 
     let html = "";
     if (data.success) {
-      html += '<div class="success">New activity opened for SR ' + esc(srNumber) + '. Fill in the details in Siebel and save.</div>';
+      var isActivity = /^1-[A-Z0-9]+$/i.test(input) && /[A-Z]/i.test(input);
+      var entityLabel = isActivity ? "Activity" : "SR";
+      html += '<div class="success">Opened ' + entityLabel + ' ' + esc(input) + ' in Siebel. Fill in the details and save.</div>';
     } else {
       html += '<div class="error">' + esc(data.error || "Failed") + '</div>';
     }
     if (data.steps && data.steps.length > 0) {
-      html += '<div style="font-size:11px;margin-top:6px;color:#555">';
+      html += '<div class="step-progress">';
       for (const step of data.steps) {
-        const icon = step.ok ? '&#10003;' : '&#10007;';
-        const cls = step.ok ? 'color:#2e7d32' : 'color:#c62828';
-        html += '<div style="' + cls + '">' + icon + ' ' + esc(step.label) + '</div>';
+        const cls = step.ok ? 'step-ok' : 'step-fail';
+        const icon = step.ok ? '✓' : '✗';
+        html += '<div class="step-item ' + cls + '"><span class="step-icon">' + icon + '</span><span class="step-label">' + esc(step.label) + '</span></div>';
       }
       html += '</div>';
     }

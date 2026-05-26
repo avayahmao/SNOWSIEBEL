@@ -5,9 +5,9 @@ Chrome sidebar extension for managing ServiceNow tickets. Uses your existing SSO
 ## Features
 
 - **List** — View your tickets with quick filter presets (My Open, My Recently Updated, My Resolved, Awaiting User Info). Inline actions on each ticket card let you add notes, update status, or close alarm INCs without switching tabs.
-- **Work Note** — Add work notes with Work Note Type selector, effort time, and message. Visibility is internal only (ACL restriction on public comments).
+- **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time, and message. Default type is "Internal Only". Visibility is internal only (ACL restriction on public comments).
 - **Action** — Update ticket state with status reason, follow-up date, notes, and effort time. Alarm INCs show a dedicated quick-close section that chains state transitions in one click.
-- **Query** — Search any ticket by number (INC/CHG/PRB/RITM/etc.), view details and recent activity log.
+- **Query** — Search any ticket by number (INC/CHG/PRB/RITM/etc.), view details, CI remote access info (with device credentials), and recent activity log.
 
 ### Inline Actions on Ticket Cards
 

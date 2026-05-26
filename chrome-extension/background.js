@@ -87,7 +87,10 @@ async function pollSiebelReady(tabId, timeoutMs) {
         func: function () {
           try {
             var app = theApplication();
-            if (app && app.ActiveViewName()) return app.ActiveViewName();
+            if (!app || !app.ActiveViewName()) return null;
+            // Also require SiebelApp.S_App for steps that use GotoView
+            if (typeof SiebelApp === "undefined" || !SiebelApp.S_App) return null;
+            return app.ActiveViewName();
           } catch (e) {}
           return null;
         }
@@ -159,6 +162,23 @@ function navigateGctTab(tabId, viewName, rowIds) {
   });
 }
 
+// Convert Siebel SR ID (e.g. "1-23644737662") to Base36 RowId ("1-AV1GSCE")
+function srIdToBase36(srNumber) {
+  if (!srNumber || typeof srNumber !== "string") throw new Error("SR number is required");
+  var parts = srNumber.split("-");
+  if (parts.length !== 2 || parts[0] !== "1") throw new Error("Expected format: 1-XXXXXXXXX");
+  var decimal = parseInt(parts[1], 10);
+  if (isNaN(decimal) || decimal < 0) throw new Error("Invalid decimal portion: " + parts[1]);
+  var chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  var result = "";
+  var n = decimal;
+  while (n > 0) {
+    result = chars[n % 36] + result;
+    n = Math.floor(n / 36);
+  }
+  return "1-" + (result || "0");
+}
+
 // Step functions — serialized and executed in GCT tab's MAIN world.
 // These call headless BC API methods defined in content-gct.js (window._siebel.*).
 
@@ -204,6 +224,23 @@ function gctLogTime(minutes) {
 
 // --- Functions that run inside the ServiceNow page (can call snowFetch) ---
 
+function getNoteTypesInPage() {
+  return snowFetch("GET", "/api/now/table/sys_choice?sysparm_query=element=u_wn_type^nameINincident,task^inactive=false&sysparm_fields=label,value,sequence&sysparm_display_value=all&sysparm_limit=200")
+    .then(function(d) {
+      var items = d.result || [];
+      items.sort(function(a, b) {
+        var sa = parseInt(typeof a.sequence === "object" ? a.sequence.value : a.sequence) || 0;
+        var sb = parseInt(typeof b.sequence === "object" ? b.sequence.value : b.sequence) || 0;
+        return sa - sb;
+      });
+      return items.map(function(r) {
+        var lbl = (typeof r.label === "object" ? r.label.display_value || r.label.value : r.label) || "";
+        var val = (typeof r.value === "object" ? r.value.value : r.value) || "";
+        return { label: lbl, value: val };
+      });
+    });
+}
+
 function getTicketInPage(table, ticketNumber) {
   return snowFetch("GET", "/api/now/table/" + table + "?sysparm_query=number=" + ticketNumber + "&sysparm_limit=1&sysparm_display_value=all")
     .then(function(d) { return d.result && d.result[0] ? d.result[0] : null; });
@@ -211,7 +248,7 @@ function getTicketInPage(table, ticketNumber) {
 
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
-  params.set("sysparm_fields", fields || "number,short_description,state,priority,assigned_to,sys_updated_on,contact_type");
+params.set("sysparm_fields", fields || "number,short_description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci");
   return snowFetch("GET", "/api/now/table/" + table + "?" + params)
     .then(function(d) { return d.result || []; });
 }
@@ -279,6 +316,51 @@ function addTimeToParentInPage(table, sysId, minutesToAdd) {
     .then(function(d) { return d.result ? d.result.time_worked : null; });
 }
 
+function getCiDetailsInPage(ciSysId) {
+  // Helper to extract display value — runs in page context where panel.js displayVal is unavailable
+  function dv(val) {
+    if (val == null || val === "") return "";
+    if (typeof val === "object") {
+      if (val.display_value != null && val.display_value !== "") return String(val.display_value);
+      if (val.value != null && val.value !== "") return String(val.value);
+      return "";
+    }
+    return String(val);
+  }
+  var allFields = "name,ip_address,serial_number,asset_tag,u_se_id,u_nat_ip_address,u_primary_connectivity_method";
+  return snowFetch("GET", "/api/now/table/cmdb_ci/" + ciSysId + "?sysparm_display_value=all&sysparm_fields=" + allFields)
+    .then(function(d) {
+      var result = d.result;
+      if (!result) return null;
+      var ciData = {
+        ciName: dv(result.name),
+        seId: dv(result.u_se_id) || dv(result.serial_number) || dv(result.asset_tag) || "",
+        ipAddress: dv(result.ip_address),
+        natIp: dv(result.u_nat_ip_address),
+        connectivity: dv(result.u_primary_connectivity_method),
+      };
+      // Fetch device credentials from u_cmdb_passwords
+      return snowFetch("GET", "/api/now/table/u_cmdb_passwords?sysparm_query=u_configuration_item=" + ciSysId + "^u_active=true&sysparm_fields=u_username,u_password,u_login_type,u_access_type&sysparm_limit=10&sysparm_display_value=all")
+        .then(function(dd) {
+          if (dd.result && dd.result.length > 0) {
+            ciData.credentials = dd.result.map(function(r) {
+              return {
+                username: dv(r.u_username),
+                password: dv(r.u_password),
+                loginType: dv(r.u_login_type),
+                accessType: dv(r.u_access_type)
+              };
+            });
+          }
+          return ciData;
+        })
+        .catch(function() { return ciData; });
+    })
+    .catch(function(e) {
+      return { _error: e.message || "Access denied" };
+    });
+}
+
 function getJournalInPage(sysId, tableName) {
   var params = new URLSearchParams({
     sysparm_query: "element_id=" + sysId + "^name=" + tableName + "^ORDERBYDESCsys_created_on",
@@ -334,59 +416,69 @@ async function handleMessage(msg) {
       throw new Error(e.message);
     }
 
-    // Bring GCT tab to foreground — Siebel JS API requires the tab to be
-    // active for applet operations to execute correctly.
+    // Bring GCT tab to foreground
     await chrome.tabs.update(gctTab.id, { active: true });
 
-    // Step 1: Navigate to All Service Request List View
-    try {
-      await navigateGctTab(gctTab.id, "All Service Request List View", null);
-      steps.push({ ok: true, label: "Navigating to Service \u2192 All Service Requests" });
-    } catch (e) {
-      steps.push({ ok: false, label: "Navigating to Service \u2192 All Service Requests \u2014 " + e.message });
-      return { success: false, steps, error: "Step failed: Navigation \u2014 " + e.message };
+    // Detect input type: Activity ID (1-ABC123) vs SR Number (1-12345678901)
+    var isActivityId = /^1-[A-Z0-9]+$/i.test(msg.srNumber) && /[A-Z]/i.test(msg.srNumber);
+
+    if (isActivityId) {
+      // Direct Activity navigation — no conversion needed, already Base36 RowId
+      var activityRowId = msg.srNumber;
+      try {
+        await navigateGctTab(gctTab.id, "All Activity List View", [{ applet: "Activity List Applet With Navigation", rowId: activityRowId }]);
+        steps.push({ ok: true, label: "Opened Activity " + msg.srNumber + " via direct link" });
+      } catch (e) {
+        steps.push({ ok: false, label: "Opening Activity " + msg.srNumber + " via direct link \\u2014 " + e.message });
+        return { success: false, steps, error: "Step failed: Direct navigation \\u2014 " + e.message };
+      }
+      return { success: true, steps };
     }
 
-    // Step 2: Query SR (returns rowId for drill-in navigation)
-    var queryResult;
+    // Step 1: Convert SR number to Base36 RowId and open directly
+    var base36RowId;
     try {
-      queryResult = await injectAndExecGct(gctTab.id, gctQuerySR, [msg.srNumber]);
-      steps.push({ ok: true, label: "Querying SR " + msg.srNumber });
+      base36RowId = srIdToBase36(msg.srNumber);
     } catch (e) {
-      steps.push({ ok: false, label: "Querying SR " + msg.srNumber + " \u2014 " + e.message });
-      return { success: false, steps, error: "Step failed: Query \u2014 " + e.message };
+      return { success: false, steps, error: "Invalid SR number: " + e.message };
     }
 
-    // Step 3: Drill into SR detail using Siebel's internal GotoView
-    // (AJAX-based navigation — no page reload, no state token issues)
+    try {
+      await navigateGctTab(gctTab.id, "All Service Request List View", [{ applet: "Service Request Detail Applet", rowId: base36RowId }]);
+      steps.push({ ok: true, label: "Opened SR " + msg.srNumber + " via direct link" });
+    } catch (e) {
+      steps.push({ ok: false, label: "Opening SR " + msg.srNumber + " via direct link \\u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Direct navigation \\u2014 " + e.message };
+    }
+
+    // Step 2: Ensure we're on the SR detail view (GotoView is a no-op if already there)
     try {
       await injectAndExecGct(gctTab.id, gctDrillIntoSR, []);
-      steps.push({ ok: true, label: "Opening SR detail" });
+      steps.push({ ok: true, label: "Switched to detail view" });
     } catch (e) {
-      steps.push({ ok: false, label: "Opening SR detail \u2014 " + e.message });
-      return { success: false, steps, error: "Step failed: Drill-in \u2014 " + e.message };
+      steps.push({ ok: false, label: "Switching to detail view \\u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Detail view \\u2014 " + e.message };
     }
 
-    // Step 4: Verify Activities tab loaded
+    // Step 3: Verify Activities applet loaded
     try {
       await injectAndExecGct(gctTab.id, gctNavigateActivities, []);
       steps.push({ ok: true, label: "Opening Activities tab" });
     } catch (e) {
-      steps.push({ ok: false, label: "Opening Activities tab \u2014 " + e.message });
-      return { success: false, steps, error: "Step failed: Activities \u2014 " + e.message };
+      steps.push({ ok: false, label: "Opening Activities tab \\u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: Activities \\u2014 " + e.message };
     }
 
-    // Step 5: Create new activity
+    // Step 4: Create new activity
     try {
       await injectAndExecGct(gctTab.id, gctCreateNewActivity, []);
       steps.push({ ok: true, label: "Creating new activity" });
     } catch (e) {
-      steps.push({ ok: false, label: "Creating new activity \u2014 " + e.message });
-      return { success: false, steps, error: "Step failed: New Activity \u2014 " + e.message };
+      steps.push({ ok: false, label: "Creating new activity \\u2014 " + e.message });
+      return { success: false, steps, error: "Step failed: New Activity \\u2014 " + e.message };
     }
 
-    // Step 6: Create empty time record (best-effort)
-    // The time row is created so the user only needs to type the minutes in Siebel.
+    // Step 5: Create empty time record (best-effort)
     try {
       await injectAndExecGct(gctTab.id, gctLogTime, [""]);
       steps.push({ ok: true, label: "Adding time row (enter minutes in Siebel)" });
@@ -408,7 +500,19 @@ async function handleMessage(msg) {
       const journal = await injectAndExec(tab.id, getJournalInPage, [sysId, table]);
       ticket._journal = journal;
     }
+    if (ticket && msg.includeCi) {
+      const ciRef = ticket.cmdb_ci;
+      const ciSysId = (typeof ciRef === "object" && ciRef !== null) ? ciRef.value : ciRef;
+      if (ciSysId) {
+        const ciDetails = await injectAndExec(tab.id, getCiDetailsInPage, [ciSysId]);
+        ticket._ci = ciDetails;
+      }
+    }
     return ticket;
+  }
+
+  if (msg.action === "getNoteTypes") {
+    return injectAndExec(tab.id, getNoteTypesInPage, []);
   }
 
   if (msg.action === "listTickets") {

@@ -32,7 +32,7 @@ Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Targ
 - List tab is Incident-only with "My" preset filters; raw query and table selector are hidden
 
 ## Custom Fields
-- `u_wn_type` — Work Note Type dropdown (e.g. "Status Update", "Customer Feedback")
+- `u_wn_type` — Work Note Type dropdown — options loaded dynamically from `sys_choice` table at startup (default: "Internal Only"); hardcoded fallback if API fails
 - `u_wn_public` — Boolean: true=public, false=internal. **Controlled by a business rule** that resets it based on whether `comments` field changed
 - `u_public_note` / `u_private_note` — Stores the note text for public/internal notes respectively
 - `u_wn_effort` — Effort duration in "1970-01-01 HH:MM:SS" format

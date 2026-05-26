@@ -301,27 +301,71 @@
     },
 
     // Step 4: Verify Activities applet is loaded
+    // After direct URL navigation, applets load asynchronously.
+    // Poll for the applet instead of failing immediately.
     navigateActivities: function () {
-      var applet = findActivitiesApplet();
-      if (!applet) throw new Error("Could not find Activities applet");
-      return Promise.resolve({ ok: true });
+      return new Promise(function (resolve, reject) {
+        var attempts = 0;
+        var maxAttempts = 30; // 15s at 500ms
+        var poll = setInterval(function () {
+          attempts++;
+          try {
+            var applet = findActivitiesApplet();
+            if (applet) {
+              clearInterval(poll);
+              console.log("[GCT] Activities applet found after " + (attempts * 500) + "ms");
+              resolve({ ok: true });
+              return;
+            }
+          } catch (e) { /* keep polling */ }
+          if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            // Diagnostic: log all applet names in current view
+            try {
+              var view = getSiebelApp().GetActiveView();
+              var appletMap = view.GetAppletMap();
+              console.error("[GCT] Activities applet NOT found after 15s. All applets in view:");
+              for (var key in appletMap) {
+                console.error("[GCT]   '" + key + "'");
+              }
+            } catch (diagErr) { /* ignore */ }
+            reject(new Error("Could not find Activities applet after 15s"));
+          }
+        }, 500);
+      });
     },
 
     // Step 5: Create new activity record
     // MUST use applet.InvokeMethod("NewRecord") — BC-level NewRecord silently fails.
+    // After direct navigation the applet may need extra settle time; poll briefly.
     createNewActivity: function () {
       return new Promise(function (resolve, reject) {
-        try {
-          var applet = findActivitiesApplet();
-          if (!applet) {
-            reject(new Error("Could not find Activities applet"));
+        var attempts = 0;
+        var maxAttempts = 10; // 5s at 500ms
+        var poll = setInterval(function () {
+          attempts++;
+          try {
+            var applet = findActivitiesApplet();
+            if (applet) {
+              clearInterval(poll);
+              console.log("[GCT] Creating new activity via applet");
+              applet.InvokeMethod("NewRecord");
+              // Give Siebel PR time to render the new row before next step
+              setTimeout(function () {
+                resolve({ ok: true });
+              }, 800);
+              return;
+            }
+          } catch (e) {
+            clearInterval(poll);
+            reject(new Error("Failed to create activity: " + e.message));
             return;
           }
-          applet.InvokeMethod("NewRecord");
-          resolve({ ok: true });
-        } catch (e) {
-          reject(new Error("Failed to create activity: " + e.message));
-        }
+          if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            reject(new Error("Could not find Activities applet for NewRecord after 5s"));
+          }
+        }, 500);
       });
     },
 

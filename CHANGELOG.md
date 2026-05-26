@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.2] - 2026-05-26
+
+### Added
+- **Dynamic Work Note Type dropdown** — Note type options are now fetched from SNOW's `sys_choice` table (`u_wn_type` field on incident/task) at startup instead of using a hardcoded list. Ensures all available options are shown, including any added by SNOW admins.
+- **Device Password section** — CI Remote Access block now includes a collapsible "Device Password" section showing login credentials (Login Type, Username, masked Password with show/hide toggle) fetched from the `u_cmdb_passwords` table.
+- **Follow-up datetime** — Follow-up input changed from date-only to `datetime-local` with UTC conversion for SNOW API compatibility.
+- **Clickable ticket numbers** — Ticket numbers in List and Query tabs are clickable links that open the ticket in the existing SNOW tab.
+
+### Changed
+- Default Work Note Type changed from "Status Update" to "Internal Only"
+- Hardcoded `<option>` elements removed from `panel.html` — dropdown is populated dynamically by `panel.js` with hardcoded fallback if API call fails
+- `background.js` — Added `getNoteTypesInPage()` function and `getNoteTypes` message handler
+- `panel.js` — Added `loadNoteTypes()`, `buildNoteTypeOptions()`, `NOTE_TYPE_VALUES` cache; `buildNoteTypeOptions` matches against both value and label for default selection
+
+## [2.1] - 2026-05-25
+
+### Added
+- **Device Password collapsible section** under CI Remote Access. Fetches login credentials (Login Type, Username, Password) from the CMDB Passwords table (`u_cmdb_passwords`). Passwords are masked by default with a show/hide toggle.
+
+## [2.0] - 2026-05-25
+
+### Added
+- **CI Remote Access details** — Query and Action tabs show CI name, SE ID, IP, NAT IP, and connectivity method fetched from `cmdb_ci`.
+- **Clickable ticket numbers** — Ticket numbers link to the ticket in the existing SNOW tab.
+
 ## [1.8] - 2026-05-25
 
 ### Changed

@@ -3,7 +3,7 @@
 ## Listing Details
 
 - **Name:** SNOW Ticket Manager
-- **Version:** 1.7
+- **Version:** 2.2
 - **Category:** Developer Tools
 - **Language:** English
 
@@ -20,7 +20,7 @@ SNOW Ticket Manager is a Chrome sidebar extension for managing ServiceNow ticket
 ### Features
 
 - **List** — View your open tickets with quick filter presets. Inline actions let you add notes, update status, or close alarm INCs without switching tabs.
-- **Work Note** — Add work notes with Work Note Type selector, effort time tracking, and message. All notes are internal (ACL restriction on public comments).
+- **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time tracking, and message. Default type is "Internal Only". All notes are internal (ACL restriction on public comments).
 - **Action** — Update ticket state with per-table state dropdowns, status reason, follow-up date, and resolution notes. State options adapt to the detected ticket type (INC shows incident states, CHG shows change states, etc.). Alarm INCs get a dedicated quick-close section that chains state transitions automatically.
 - **Query** — Search any ticket by number to view full details and activity log.
 
