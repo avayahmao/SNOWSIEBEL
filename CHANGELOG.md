@@ -3,6 +3,8 @@
 ## [2.3] - 2026-05-26
 
 ### Added
+- **Stale ticket highlighting** — Tickets not updated in more than 7 days are visually marked in List and Query tabs with a red left border, subtle gradient background, and a "Stale (Nd)" badge showing the exact number of days since last update.
+- **Oldest-first sorting** — List tab tickets are now sorted by `sys_updated_on` ascending (stalest first) via both SNOW query `ORDERBY` directives and a defensive client-side sort as a fallback.
 - **Inline View Notes** — Every ticket card in List and Query tabs now has a "View Notes" link that expands an inline journal viewer showing work notes and comments with color-coded badges (gold for Work Notes, blue for Comments), sorted newest-first, paginated in batches of 5 with a "Load more" button.
 - Journal parsing logic reads `work_notes` and `comments` fields directly from the ticket record (bypasses `sys_journal_field` ACL restrictions). Parses concatenated display text by splitting on date-time header pattern (`YYYY-MM-DD HH:MM:SS - Author`).
 - Toggle and mutual exclusion with other inline forms (Add Note, Update Status, Close Alarm)
