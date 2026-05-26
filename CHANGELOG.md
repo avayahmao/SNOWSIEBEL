@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3] - 2026-05-26
+
+### Added
+- **Inline View Notes** — Every ticket card in List and Query tabs now has a "View Notes" link that expands an inline journal viewer showing work notes and comments with color-coded badges (gold for Work Notes, blue for Comments), sorted newest-first, paginated in batches of 5 with a "Load more" button.
+- Journal parsing logic reads `work_notes` and `comments` fields directly from the ticket record (bypasses `sys_journal_field` ACL restrictions). Parses concatenated display text by splitting on date-time header pattern (`YYYY-MM-DD HH:MM:SS - Author`).
+- Toggle and mutual exclusion with other inline forms (Add Note, Update Status, Close Alarm)
+- Journal entry CSS styles in `panel.html`
+- "Journal Parsing" section added to README documenting the approach and rationale
+
 ## [2.2] - 2026-05-26
 
 ### Added
