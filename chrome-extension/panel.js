@@ -246,6 +246,39 @@ function esc(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+const STALE_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function parseUpdatedOn(value) {
+  const dv = displayVal(value);
+  if (!dv) return null;
+  const d = new Date(dv);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function isStale(updatedOn) {
+  const d = parseUpdatedOn(updatedOn);
+  if (!d) return false;
+  const diffMs = Date.now() - d.getTime();
+  return diffMs > STALE_DAYS * MS_PER_DAY;
+}
+
+function staleDays(updatedOn) {
+  const d = parseUpdatedOn(updatedOn);
+  if (!d) return 0;
+  return Math.floor((Date.now() - d.getTime()) / MS_PER_DAY);
+}
+
+function staleBadge(updatedOn) {
+  if (!isStale(updatedOn)) return "";
+  const days = staleDays(updatedOn);
+  return `<span class="stale-badge">Stale (${days}d)</span>`;
+}
+
+function staleClass(updatedOn) {
+  return isStale(updatedOn) ? " stale-ticket" : "";
+}
+
 function formatField(label, value) {
   const dv = displayVal(value);
   if (!dv) return "";
@@ -768,8 +801,9 @@ document.getElementById("btn-query").addEventListener("click", async () => {
       queryResult.innerHTML = `<div class="error">Ticket ${esc(number)} not found</div>`;
       return;
     }
-    let html = `<div class="ticket-card">`;
-    html += `<div>${ticketLink(displayVal(ticket.number) || number)}</div>`;
+    const sc = staleClass(ticket.sys_updated_on);
+    let html = `<div class="ticket-card${sc}">`;
+    html += `<div>${ticketLink(displayVal(ticket.number) || number)}${staleBadge(ticket.sys_updated_on)}</div>`;
     const qSubcls = displayVal(ticket.contact_type);
     const qTable = detectTable(number);
     const qCfg = getStateConfig(qTable);
@@ -824,11 +858,11 @@ let listAutoLoaded = false;
 
 const PRESETS = {
   "my-open": "active=true^assigned_to=javascript:gs.getUserID()",
-  "my-updated": "assigned_to=javascript:gs.getUserID()^ORDERBYDESCsys_updated_on",
+  "my-updated": "assigned_to=javascript:gs.getUserID()^ORDERBYsys_updated_on",
   "my-resolved": "assigned_to=javascript:gs.getUserID()^state=7^resolved_onONLast 7 days@javascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0)",
   "group-open": "active=true^assignment_group=javascript:gs.getUser().getMyGroups()",
   "p1-p2": "active=true^priorityIN1,2",
-  "all-open": "active=true^ORDERBYDESCsys_updated_on",
+  "all-open": "active=true^ORDERBYsys_updated_on",
   "updated-today": "sys_updated_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_updated_on",
   "created-today": "sys_created_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_created_on",
   "awaiting": "state=4^assigned_to=javascript:gs.getUserID()",
@@ -848,14 +882,24 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit });
+    // Defensive sort: oldest update first (stalest at top)
+    tickets.sort((a, b) => {
+      const da = parseUpdatedOn(a.sys_updated_on);
+      const db = parseUpdatedOn(b.sys_updated_on);
+      if (!da && !db) return 0;
+      if (!da) return 1;  // unparseable → end
+      if (!db) return -1; // unparseable → end
+      return da - db;
+    });
     if (!tickets.length) {
       listResult.innerHTML = '<div class="ticket-field" style="padding:8px">No tickets found</div>';
       return;
     }
     let html = "";
     for (const t of tickets) {
-      html += `<div class="ticket-card">`;
-      html += `<div>${ticketLink(displayVal(t.number))}</div>`;
+      const sc = staleClass(t.sys_updated_on);
+      html += `<div class="ticket-card${sc}">`;
+      html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on)}</div>`;
       const subcls = displayVal(t.contact_type);
       const lTable = detectTable(displayVal(t.number));
       const lCfg = getStateConfig(lTable);
