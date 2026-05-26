@@ -308,6 +308,10 @@ function renderJournalInline(container, journal, maxShow) {
     html += '<div style="text-align:center;padding:4px 0">';
     html += '<a class="view-notes-more" data-ticket="' + esc(ticket) + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">Load more (' + remaining + ' remaining)</a>';
     html += '</div>';
+  } else {
+    html += '<div style="text-align:center;padding:8px 0 4px">';
+    html += '<button class="copy-notes-md" data-ticket="' + esc(ticket) + '" style="cursor:pointer;font-size:var(--text-sm);padding:4px 12px;border:1px solid var(--border);border-radius:4px;background:var(--bg-card);color:var(--text)">Copy Ticket as MD</button>';
+    html += '</div>';
   }
   container.innerHTML = html;
 }
@@ -420,12 +424,57 @@ document.addEventListener("click", (e) => {
       .then(function(data) {
         var journal = (data && data._journal) ? data._journal : [];
         container._journalData = journal;
+        container._ticketData = data;
         container._shownCount = 5;
         renderJournalInline(container, journal, 5);
       })
       .catch(function(err) {
         container.innerHTML = '<div class="error">' + esc(err.message) + '</div>';
       });
+    return;
+  }
+  // --- Copy Ticket as MD ---
+  if (e.target.classList.contains("copy-notes-md")) {
+    e.preventDefault();
+    var ticket = e.target.dataset.ticket;
+    var notesId = "notes-inline-" + ticket.replace(/[^a-zA-Z0-9]/g, "");
+    var container = document.getElementById(notesId);
+    if (!container || !container._journalData) return;
+    var t = container._ticketData || {};
+    var table = detectTable(ticket);
+    var cfg = getStateConfig(table);
+    var stateVal = typeof t.state === "object" ? t.state.value : t.state;
+    var stateLabel = (cfg.labels && cfg.labels[stateVal]) ? cfg.labels[stateVal] : stateVal;
+    var md = "# " + ticket + "\n\n";
+    md += "- **Description:** " + displayVal(t.short_description) + "\n";
+    md += "- **State:** " + stateLabel + "\n";
+    md += "- **Priority:** " + displayVal(t.priority) + "\n";
+    md += "- **Assigned to:** " + displayVal(t.assigned_to) + "\n";
+    md += "- **Assignment group:** " + displayVal(t.assignment_group) + "\n";
+    md += "- **Updated:** " + displayVal(t.sys_updated_on) + "\n";
+    var desc = displayVal(t.description);
+    if (desc) md += "\n## Details\n\n" + desc + "\n";
+    md += "\n## Notes\n\n";
+    var journal = container._journalData;
+    for (var i = 0; i < journal.length; i++) {
+      var entry = journal[i];
+      var type = displayVal(entry.element) === "work_notes" ? "Work Note" : "Comment";
+      var author = displayVal(entry.sys_created_by);
+      var created = displayVal(entry.sys_created_on);
+      var value = displayVal(entry.value) || "";
+      md += "### " + type + " " + created + " - " + author + "\n\n";
+      md += value + "\n\n---\n\n";
+    }
+    var ta = document.createElement("textarea");
+    ta.value = md;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); e.target.textContent = "Copied!"; }
+    catch(ex) { e.target.textContent = "Copy failed"; }
+    document.body.removeChild(ta);
+    setTimeout(function() { e.target.textContent = "Copy Ticket as MD"; }, 2000);
     return;
   }
   // --- Inline Add Note ---

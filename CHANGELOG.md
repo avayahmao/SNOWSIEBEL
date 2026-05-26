@@ -4,6 +4,8 @@
 
 ### Added
 - **Inline View Notes** — Every ticket card in List and Query tabs now has a "View Notes" link that expands an inline journal viewer showing work notes and comments with color-coded badges (gold for Work Notes, blue for Comments), sorted newest-first, paginated in batches of 5 with a "Load more" button.
+- **Deduplicated journal entries** — Entries sharing the same timestamp and author (e.g., "Customer Comments" stub + actual email body from ServiceNow) are merged into a single entry in "stub - content" format.
+- **Copy Ticket as MD** — A "Copy Ticket as MD" button appears at the bottom of notes when all entries are loaded. Generates markdown with full ticket context (description, state, priority, assignment, details) and all notes, copied to clipboard.
 - Journal parsing logic reads `work_notes` and `comments` fields directly from the ticket record (bypasses `sys_journal_field` ACL restrictions). Parses concatenated display text by splitting on date-time header pattern (`YYYY-MM-DD HH:MM:SS - Author`).
 - Toggle and mutual exclusion with other inline forms (Add Note, Update Status, Close Alarm)
 - Journal entry CSS styles in `panel.html`

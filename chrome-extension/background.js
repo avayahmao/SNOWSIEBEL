@@ -385,8 +385,28 @@ function getJournalInPage(sysId, tableName) {
       var cm = typeof rec.comments === "object" ? rec.comments.display_value : rec.comments;
       parseJournal(wn, "work_notes");
       parseJournal(cm, "comments");
-      entries.sort(function(a, b) { return (b.sys_created_on.value || "").localeCompare(a.sys_created_on.value || ""); });
-      return entries;
+      // Merge entries with same timestamp + author into one
+      var merged = {};
+      var result = [];
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        var key = e.sys_created_on.value + "|" + e.sys_created_by.value;
+        if (merged[key]) {
+          var prevBody = merged[key].value.value || "";
+          var curBody = e.value.value || "";
+          if (prevBody && curBody && prevBody !== curBody) {
+            var short = prevBody.length < curBody.length ? prevBody : curBody;
+            var long = prevBody.length < curBody.length ? curBody : prevBody;
+            merged[key].value.value = short + " - " + long;
+            merged[key].value.display_value = merged[key].value.value;
+          }
+        } else {
+          merged[key] = e;
+        }
+      }
+      for (var k in merged) result.push(merged[k]);
+      result.sort(function(a, b) { return (b.sys_created_on.value || "").localeCompare(a.sys_created_on.value || ""); });
+      return result;
     });
 }
 
