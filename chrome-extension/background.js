@@ -1,6 +1,8 @@
 importScripts("note-fields.js");
 
 const INSTANCE_URL = "https://avaya.service-now.com";
+const OCD_API_URL = "https://ocd.avaya.com/api.php";
+const OCD_AUTH = { auth_user: "aiq_service", auth_key: "3eb5e739c865df854b54b8bcfb994225" };
 
 // Open sidebar when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
@@ -444,6 +446,35 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 async function handleMessage(msg) {
+  if (msg.action === "fetchOcdBacklog") {
+    const userName = msg.userName;
+    if (!userName) throw new Error("Username is required");
+
+    function buildOcdParams(method) {
+      return new URLSearchParams({
+        ...OCD_AUTH,
+        object: "user",
+        method: method,
+        user_name: userName
+      });
+    }
+
+    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+    const [srResp, sraResp] = await Promise.all([
+      fetch(OCD_API_URL, { method: "POST", headers, body: buildOcdParams("backlog_sr") }).then(r => r.json()),
+      fetch(OCD_API_URL, { method: "POST", headers, body: buildOcdParams("backlog_sra") }).then(r => r.json())
+    ]);
+
+    if (srResp.code !== 200 && srResp.code !== 400) throw new Error("OCD API error (SR): " + (srResp.status || "unknown"));
+    if (sraResp.code !== 200 && sraResp.code !== 400) throw new Error("OCD API error (SRA): " + (sraResp.status || "unknown"));
+
+    const srItems = (srResp.data || []).map(function(item) { item._type = "SR"; return item; });
+    const sraItems = (sraResp.data || []).map(function(item) { item._type = "SRA"; return item; });
+    const allItems = srItems.concat(sraItems);
+
+    return { userName: userName, items: allItems };
+  }
+
   // GCT actions use a separate tab and don't need SNOW
   if (msg.action === "siebelCreateActivity") {
     const steps = [];

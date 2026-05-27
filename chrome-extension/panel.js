@@ -1316,3 +1316,147 @@ document.getElementById("btn-siebel-create").addEventListener("click", async () 
     btn.textContent = "Add a Note in Siebel";
   }
 });
+
+// --- Siebel Backlog ---
+const sblResults = document.getElementById("siebel-backlog-results");
+const sblUsernameInput = document.getElementById("sbl-username");
+
+document.getElementById("btn-siebel-backlog").addEventListener("click", async () => {
+  const userName = sblUsernameInput.value.trim();
+  if (!userName) {
+    sblResults.innerHTML = '<div class="error">Enter your Siebel username</div>';
+    return;
+  }
+
+  const btn = document.getElementById("btn-siebel-backlog");
+  btn.disabled = true;
+  btn.textContent = "Loading...";
+  sblResults.innerHTML = '<div class="sbl-loading">Fetching backlog from OCD...</div>';
+
+  try {
+    const resp = await send({ action: "fetchOcdBacklog", userName: userName });
+    if (!resp.items || resp.items.length === 0) {
+      sblResults.innerHTML = '<div class="sbl-empty">No SR/SRA items in your backlog</div>';
+      return;
+    }
+
+    resp.items.sort((a, b) => (parseInt(b.updated_time) || 0) - (parseInt(a.updated_time) || 0));
+
+    let html = '<div class="result-box">';
+    html += '<div class="ticket-field" style="margin-bottom:8px;color:var(--text-muted)">' + esc(resp.items.length) + ' items for ' + esc(userName) + '</div>';
+    for (const item of resp.items) {
+      html += renderSblCard(item);
+    }
+    html += '</div>';
+    sblResults.innerHTML = html;
+  } catch (e) {
+    sblResults.innerHTML = '<div class="error">' + esc(e.message) + ' <span class="toggle-link" id="sbl-retry">Retry</span></div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Load Backlog";
+  }
+});
+
+function renderSblCard(item) {
+  const statusClass = "sbl-status-" + (item.activity_status_name || "").toLowerCase().replace(/\s+/g, "-");
+  const updatedSec = parseInt(item.updated_time) || 0;
+  const updatedMs = updatedSec * 1000;
+  const updatedAgo = updatedSec ? timeAgo(updatedMs) : "";
+  const desc = esc(item.activity_description || "");
+  const truncatedDesc = desc.length > 120 ? desc.substring(0, 120) + "..." : desc;
+  const noteText = esc(item.last_status_note || "");
+  const truncatedNote = noteText.length > 80 ? noteText.substring(0, 80) + "..." : noteText;
+
+  const isClosed = /closed|resolved|cancelled|cancel/i.test(item.activity_status_name || "");
+  let staleCls = "";
+  let staleBadgeHtml = "";
+  if (!isClosed && updatedMs) {
+    const daysSinceUpdate = (Date.now() - updatedMs) / MS_PER_DAY;
+    if (daysSinceUpdate >= CRITICAL_STALE_DAYS) {
+      staleCls = " sbl-stale-critical";
+      staleBadgeHtml = ' <span class="sbl-badge-stale sbl-stale-critical">Stale ' + Math.floor(daysSinceUpdate) + 'd</span>';
+    } else if (daysSinceUpdate >= STALE_DAYS) {
+      staleCls = " sbl-stale";
+      staleBadgeHtml = ' <span class="sbl-badge-stale sbl-stale-warn">Stale ' + Math.floor(daysSinceUpdate) + 'd</span>';
+    }
+  }
+
+  let html = '<div class="sbl-card' + staleCls + '">';
+  html += '<div><span class="sbl-num">' + esc(item.activity_number) + '</span>';
+  html += ' <span class="sbl-badge sbl-badge-type">' + esc(item._type) + '</span>';
+  html += ' <span class="sbl-badge sbl-badge-status ' + statusClass + '">' + esc(item.activity_status_name) + '</span>';
+  html += ' <span class="sbl-badge sbl-badge-severity">' + esc(item.activity_severity_name) + '</span>';
+  html += staleBadgeHtml;
+  html += '</div>';
+  html += '<div class="sbl-field">' + truncatedDesc + '</div>';
+  html += '<div class="sbl-field"><b>Customer:</b> ' + esc(item.customer_name) + '</div>';
+  html += '<div class="sbl-field"><b>Skill:</b> ' + esc(item.skill_name) + '</div>';
+  html += '<div class="sbl-meta">Hours: ' + esc(item.hours) + ' | Age: ' + esc(item.age) + ' | Updated: ' + updatedAgo + '</div>';
+  if (noteText) {
+    html += '<div class="sbl-note-preview" title="Click to expand">' + truncatedNote + '</div>';
+  }
+  if (item._type === "SRA" && item.parent_activity_number) {
+    html += '<div class="sbl-parent">Parent SR: <a href="https://ocd.avaya.com/" target="_blank">' + esc(item.parent_activity_number) + '</a></div>';
+  }
+  html += '<div class="sbl-actions"><span class="sbl-add-note-link" data-sbl-id="' + esc(item.activity_number) + '">+ Add Note</span></div>';
+  html += '</div>';
+  return html;
+}
+
+function timeAgo(timestamp) {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes + "m ago";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + "h ago";
+  const days = Math.floor(hours / 24);
+  return days + "d ago";
+}
+
+// Delegated click handlers for Siebel backlog cards
+document.addEventListener("click", async (e) => {
+  const addNoteLink = e.target.closest(".sbl-add-note-link");
+  if (addNoteLink) {
+    const activityId = addNoteLink.dataset.sblId;
+    const card = addNoteLink.closest(".sbl-card");
+    const actionsDiv = card.querySelector(".sbl-actions");
+    addNoteLink.style.display = "none";
+    actionsDiv.insertAdjacentHTML("beforeend", '<span class="sbl-note-status" style="color:var(--navy);font-size:var(--text-sm)">Opening in Siebel...</span>');
+
+    try {
+      const data = await send({ action: "siebelCreateActivity", srNumber: activityId });
+      const status = actionsDiv.querySelector(".sbl-note-status");
+      if (data.success) {
+        status.textContent = "Opened in Siebel";
+        status.style.color = "var(--success)";
+      } else {
+        status.textContent = data.error || "Failed";
+        status.style.color = "var(--danger)";
+      }
+    } catch (err) {
+      const status = actionsDiv.querySelector(".sbl-note-status");
+      status.textContent = err.message;
+      status.style.color = "var(--danger)";
+    }
+    setTimeout(() => {
+      addNoteLink.style.display = "";
+      const status = actionsDiv.querySelector(".sbl-note-status");
+      if (status) status.remove();
+    }, 3000);
+    return;
+  }
+
+  const notePreview = e.target.closest(".sbl-note-preview");
+  if (notePreview) {
+    notePreview.classList.toggle("expanded");
+    return;
+  }
+
+  const retryBtn = e.target.closest("#sbl-retry");
+  if (retryBtn) {
+    document.getElementById("btn-siebel-backlog").click();
+    return;
+  }
+});

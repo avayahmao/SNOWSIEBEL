@@ -4,11 +4,20 @@
 Chrome extension (Manifest V3) for managing ServiceNow tickets via sidebar. Target instance: `avaya.service-now.com`. Authentication relies on the browser's existing SSO session — no API tokens.
 
 ## Architecture
-- **panel.html / panel.js** — Sidebar UI with 4 tabs: List (default), Work Note, Action, Query
-- **background.js** — Service worker handling message routing; injects scripts into SNOW tab
+- **panel.html / panel.js** — Sidebar UI with 5 tabs: List (default), Work Note, Action, Query, Siebel
+- **background.js** — Service worker handling message routing; injects scripts into SNOW tab; makes direct fetch() calls to OCD API
 - **note-fields.js** — Shared module (works in both service worker and browser); builds comment field maps via `buildCommentFields()`
 - **content-snow.js** — Injected into SNOW page's MAIN world; provides `snowFetch()` which uses `g_ck` + cookies
 - Two-step injection: inject `content-snow.js` first, then `executeScript` with a function that calls `snowFetch`
+
+## OCD API (Siebel Backlog)
+- **URL**: `https://ocd.avaya.com/api.php` — form-encoded POST (NOT JSON)
+- **Auth**: Hardcoded `auth_user`/`auth_key` constants in background.js (`OCD_AUTH`)
+- **Endpoints**: `object=user&method=backlog_sr` (SRs) and `object=user&method=backlog_sra` (SRAs)
+- **Input**: `user_name` parameter (entered by user in Siebel tab)
+- **Response**: `{code, status, data: [...]}` — code 400 means empty backlog (not an error)
+- Calls are made in background.js service worker via standard `fetch()` — no content script injection needed
+- Both endpoints return identical field structures; differentiated by `_type` tag added in background.js
 
 ## Key Patterns
 - All API calls go through `snowFetch()` in the page's MAIN world (required for auth)

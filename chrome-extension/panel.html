@@ -333,6 +333,65 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
+
+/* ── Siebel Backlog ── */
+.sbl-section-title { font-size: var(--text-sm); font-weight: 700; color: var(--navy); margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--border-light); }
+.sbl-card {
+  padding: 10px 14px; border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition);
+}
+.sbl-card:last-child { border-bottom: none; }
+.sbl-card:hover { background: var(--surface-alt); }
+.sbl-card.sbl-stale {
+  border-left: 4px solid #E5A00D;
+  background: #FFF8E1;
+}
+.sbl-card.sbl-stale:hover {
+  background: #FFF0C2;
+}
+.sbl-card.sbl-stale-critical {
+  border-left: 5px solid #D32F2F;
+  background: #FFEBEE;
+}
+.sbl-card.sbl-stale-critical:hover {
+  background: #FFCDD2;
+}
+.sbl-badge-stale {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; margin-left: 6px;
+  color: #fff;
+}
+.sbl-badge-stale.sbl-stale-warn { background: #E5A00D; animation: stale-pulse 2s ease-in-out infinite; }
+.sbl-badge-stale.sbl-stale-critical { background: #D32F2F; animation: stale-pulse 1.5s ease-in-out infinite; }
+.sbl-num { font-weight: 700; color: var(--navy); font-size: var(--text-md); }
+.sbl-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; margin-left: 6px; vertical-align: middle;
+}
+.sbl-badge-type { background: var(--navy-light); color: var(--navy); }
+.sbl-badge-status { background: #DBEAFE; color: #1E40AF; }
+.sbl-badge-status.sbl-status-working { background: #FEF3C7; color: #92400E; }
+.sbl-badge-status.sbl-status-in-progress { background: #FEF3C7; color: #92400E; }
+.sbl-badge-status.sbl-status-open { background: #DBEAFE; color: #1E40AF; }
+.sbl-badge-status.sbl-status-resolved { background: #D1FAE5; color: #065F46; }
+.sbl-badge-status.sbl-status-closed { background: #F3F4F6; color: #4B5563; }
+.sbl-badge-severity { background: #FEE2E2; color: #991B1B; }
+.sbl-field { color: var(--text-secondary); margin-top: 2px; line-height: 1.45; word-break: break-word; font-size: var(--text-sm); }
+.sbl-field b { color: var(--text); font-weight: 600; }
+.sbl-meta { color: var(--text-muted); font-size: var(--text-xs); margin-top: 3px; }
+.sbl-parent { color: var(--text-muted); font-size: var(--text-xs); margin-top: 2px; }
+.sbl-parent a { color: var(--navy); text-decoration: none; }
+.sbl-parent a:hover { text-decoration: underline; }
+.sbl-note-preview { color: var(--text-muted); font-size: var(--text-xs); margin-top: 3px; font-style: italic; max-height: 36px; overflow: hidden; cursor: pointer; transition: max-height 0.2s; }
+.sbl-note-preview.expanded { max-height: 500px; font-style: normal; color: var(--text-secondary); }
+.sbl-actions { margin-top: 6px; }
+.sbl-add-note-link { color: var(--primary); cursor: pointer; font-size: var(--text-sm); font-weight: 500; transition: color var(--transition); }
+.sbl-add-note-link:hover { color: var(--primary-hover); text-decoration: underline; }
+.sbl-loading { display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--text-muted); gap: 8px; }
+.sbl-loading::before { content: ""; display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--navy); border-radius: 50%; animation: spin 0.6s linear infinite; }
+.sbl-empty { color: var(--text-muted); text-align: center; padding: 24px; font-size: var(--text-sm); }
+.btn-siebel-load { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -538,6 +597,15 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
     <button class="btn btn-primary" id="btn-siebel-create">Add a Note in Siebel</button>
   </div>
   <div id="siebel-result" class="result-box"></div>
+  <div class="sbl-section-title">My Siebel Backlog</div>
+  <div class="form-group">
+    <label>Siebel Username</label>
+    <input id="sbl-username">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary btn-siebel-load" id="btn-siebel-backlog">Load Backlog</button>
+  </div>
+  <div id="siebel-backlog-results"></div>
 </div>
 
 <script src="note-fields.js"></script>

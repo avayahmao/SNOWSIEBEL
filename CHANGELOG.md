@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.6] - 2026-05-27
+
+### Added
+- **Siebel Backlog List** — Siebel tab now shows a "My Siebel Backlog" section below the manual form. Click "Load Backlog" to fetch your open SRs and SRAs from the OCD API. Each card shows activity number, type (SR/SRA), status, severity, customer, skill, hours, age, last note, and an "Add Note" action.
+- **OCD API integration** — Background service worker makes form-encoded POST requests to `https://ocd.avaya.com/api.php` with two parallel calls (`backlog_sr` and `backlog_sra`), merges results, and returns to the panel.
+- **Stale highlighting on Siebel cards** — Same two-tier stale strategy as SNOW list: yellow border/bg for ≥7 days, red pulsing for ≥14 days. Closed/resolved items are excluded.
+- **Username input** — User enters their Siebel username to fetch backlog (auto-detection was unreliable due to SNOW global variable inconsistencies).
+- **"Add Note" on backlog cards** — Triggers the existing GCT automation flow (`siebelCreateActivity`) to open the activity directly in Siebel.
+- **Expandable last note preview** — Truncated by default, click to expand.
+- **Parent SR link** on SRA cards.
+
+### Changed
+- Added `storage` permission to manifest.json for `chrome.storage.local`.
+- Added `*://ocd.avaya.com/*` to host permissions.
+
+## [2.5] - 2026-05-27
+
+### Added
+- **Two-tier stale highlighting** — Tickets not updated for ≥7 days get yellow border/background; ≥14 days get red border/background with pulsing badge. Closed/resolved/cancelled tickets are excluded from stale detection.
+
 ## [2.4] - 2026-05-27
 
 ### Fixed

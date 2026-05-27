@@ -9,6 +9,7 @@ Chrome sidebar extension for managing ServiceNow tickets. Uses your existing SSO
 - **Action** — Update ticket state with status reason, follow-up date, notes, and effort time. Alarm INCs show a dedicated quick-close section that chains state transitions in one click.
 - **Query** — Search any ticket by number (INC/CHG/PRB/RITM/etc.), view details, CI remote access info (with device credentials), and recent activity log.
 - **View Notes** — Inline expandable journal viewer on every ticket card (List and Query tabs). Shows work notes and comments with color-coded badges, sorted newest-first. Displays 5 entries initially with a "Load more" button.
+- **Siebel** — Open an SR or Activity in Siebel CRM to add notes. Also shows your Siebel backlog (SRs and SRAs from OCD API) with inline "Add Note" actions and stale highlighting.
 
 ### Inline Actions on Ticket Cards
 
@@ -67,8 +68,9 @@ Click the extension icon to open the sidebar. The default tab is **List** (auto-
 ```
 chrome-extension/
 ├── manifest.json       # Manifest V3 config
-├── background.js       # Service worker — message routing & API orchestration
+├── background.js       # Service worker — message routing, API orchestration, OCD API calls
 ├── content-snow.js     # Injected into SNOW page — provides snowFetch() helper
+├── content-gct.js      # Injected into Siebel/GCT page — headless BC API automation
 ├── note-fields.js      # Shared module — builds comment field maps
 ├── panel.html          # Sidebar UI layout & styles
 ├── panel.js            # Sidebar UI logic & event handlers
