@@ -298,19 +298,40 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
 ::-webkit-scrollbar-thumb { background: #B8C4D8; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #8E9BB5; }
 
-/* ── Stale Ticket Highlight (>7 days since last update) ── */
+/* ── Stale Ticket Highlight ── */
+/* Tier 1: Warning (7–13 days) */
 .ticket-card.stale-ticket {
-  border-left: 3px solid var(--danger);
-  background: linear-gradient(to right, var(--danger-light) 0%, var(--surface) 40%);
+  border-left: 4px solid #E5A00D;
+  background: #FFF8E1;
 }
 .ticket-card.stale-ticket:hover {
-  background: linear-gradient(to right, #FCE8E1 0%, var(--surface-alt) 40%);
+  background: #FFF0C2;
+}
+/* Tier 2: Critical (≥14 days) */
+.ticket-card.stale-critical-ticket {
+  border-left: 5px solid #D32F2F;
+  background: #FFEBEE;
+}
+.ticket-card.stale-critical-ticket:hover {
+  background: #FFCDD2;
 }
 .stale-badge {
   display: inline-flex; align-items: center; gap: 3px;
-  background: var(--danger); color: #fff;
   padding: 1px 6px; border-radius: 999px;
   font-size: var(--text-xs); font-weight: 600; margin-left: 6px;
+  color: #fff;
+}
+.stale-badge.stale-warn {
+  background: #E5A00D;
+  animation: stale-pulse 2s ease-in-out infinite;
+}
+.stale-badge.stale-critical {
+  background: #D32F2F;
+  animation: stale-pulse 1.5s ease-in-out infinite;
+}
+@keyframes stale-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 </style>
 </head>

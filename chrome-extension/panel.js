@@ -223,6 +223,7 @@ function esc(s) {
 }
 
 const STALE_DAYS = 7;
+const CRITICAL_STALE_DAYS = 14;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function parseUpdatedOn(value) {
@@ -232,20 +233,36 @@ function parseUpdatedOn(value) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// Terminal states — no stale warning for closed/resolved/cancelled tickets
-const FINAL_STATES = new Set(["6","7","8","3","4","5","6","7","105","106"]);
-
-function isFinalState(state) {
-  const raw = typeof state === "object" ? String(state.value) : String(state);
-  return FINAL_STATES.has(raw);
+// Auto-build per-table exclusion set from TABLE_STATES labels containing "Closed" or "Cancel"
+const CLOSED_STATES = {};
+for (const [table, cfg] of Object.entries(TABLE_STATES)) {
+  CLOSED_STATES[table] = new Set(
+    Object.entries(cfg.labels)
+      .filter(([, label]) => /closed|cancel/i.test(label))
+      .map(([code]) => code)
+  );
 }
 
-function isStale(updatedOn, state) {
-  if (isFinalState(state)) return false;
+function isClosedState(state, table) {
+  const raw = typeof state === "object" ? String(state.value) : String(state);
+  const closed = CLOSED_STATES[table] || CLOSED_STATES.incident;
+  return closed.has(raw);
+}
+
+function isStale(updatedOn, state, table) {
+  if (isClosedState(state, table)) return false;
   const d = parseUpdatedOn(updatedOn);
   if (!d) return false;
   const diffMs = Date.now() - d.getTime();
   return diffMs > STALE_DAYS * MS_PER_DAY;
+}
+
+function isCriticalStale(updatedOn, state, table) {
+  if (isClosedState(state, table)) return false;
+  const d = parseUpdatedOn(updatedOn);
+  if (!d) return false;
+  const diffMs = Date.now() - d.getTime();
+  return diffMs > CRITICAL_STALE_DAYS * MS_PER_DAY;
 }
 
 function staleDays(updatedOn) {
@@ -254,14 +271,18 @@ function staleDays(updatedOn) {
   return Math.floor((Date.now() - d.getTime()) / MS_PER_DAY);
 }
 
-function staleBadge(updatedOn, state) {
-  if (!isStale(updatedOn, state)) return "";
+function staleBadge(updatedOn, state, table) {
+  if (!isStale(updatedOn, state, table)) return "";
   const days = staleDays(updatedOn);
-  return `<span class="stale-badge">Stale (${days}d)</span>`;
+  const critical = isCriticalStale(updatedOn, state, table);
+  const cls = critical ? "stale-badge stale-critical" : "stale-badge stale-warn";
+  const icon = critical ? "⚠ " : "";
+  return `<span class="${cls}">${icon}Stale (${days}d)</span>`;
 }
 
-function staleClass(updatedOn, state) {
-  return isStale(updatedOn, state) ? " stale-ticket" : "";
+function staleClass(updatedOn, state, table) {
+  if (!isStale(updatedOn, state, table)) return "";
+  return isCriticalStale(updatedOn, state, table) ? " stale-critical-ticket" : " stale-ticket";
 }
 
 function formatField(label, value) {
@@ -851,11 +872,11 @@ document.getElementById("btn-query").addEventListener("click", async () => {
       queryResult.innerHTML = `<div class="error">Ticket ${esc(number)} not found</div>`;
       return;
     }
-    const sc = staleClass(ticket.sys_updated_on, ticket.state);
-    let html = `<div class="ticket-card${sc}">`;
-    html += `<div>${ticketLink(displayVal(ticket.number) || number)}${staleBadge(ticket.sys_updated_on, ticket.state)}</div>`;
-    const qSubcls = displayVal(ticket.contact_type);
     const qTable = detectTable(number);
+    const sc = staleClass(ticket.sys_updated_on, ticket.state, qTable);
+    let html = `<div class="ticket-card${sc}">`;
+    html += `<div>${ticketLink(displayVal(ticket.number) || number)}${staleBadge(ticket.sys_updated_on, ticket.state, qTable)}</div>`;
+    const qSubcls = displayVal(ticket.contact_type);
     const qCfg = getStateConfig(qTable);
     if (qSubcls === "Alarm" && qCfg.supportsAlarmClose) html += `<span class="alarm-badge">Alarm</span>`;
     html += formatField("Description", ticket.short_description);
@@ -947,11 +968,11 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     }
     let html = "";
     for (const t of tickets) {
-      const sc = staleClass(t.sys_updated_on, t.state);
-      html += `<div class="ticket-card${sc}">`;
-      html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on, t.state)}</div>`;
-      const subcls = displayVal(t.contact_type);
       const lTable = detectTable(displayVal(t.number));
+      const sc = staleClass(t.sys_updated_on, t.state, lTable);
+      html += `<div class="ticket-card${sc}">`;
+      html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on, t.state, lTable)}</div>`;
+      const subcls = displayVal(t.contact_type);
       const lCfg = getStateConfig(lTable);
       if (subcls === "Alarm" && lCfg.supportsAlarmClose) html += `<span class="alarm-badge">Alarm</span>`;
       html += formatField("Description", t.short_description);
