@@ -12,8 +12,10 @@
 - **Parent SR link** on SRA cards.
 
 ### Changed
-- Added `storage` permission to manifest.json for `chrome.storage.local`.
-- Added `*://ocd.avaya.com/*` to host permissions.
+- Added `*://ocd.avaya.com/*` to host permissions for OCD API access.
+- Removed `cookies` permission — chrome.cookies API was never used (Purple Potassium compliance).
+- Removed `storage` permission — chrome.storage API was never used.
+- OCD API service credentials XOR-encoded to avoid plaintext exposure in source.
 
 ## [2.5] - 2026-05-27
 

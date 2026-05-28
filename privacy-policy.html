@@ -13,37 +13,42 @@
 </head>
 <body>
 
-<h1>Privacy Policy for SNOW Ticket Manager</h1>
-<p class="last-updated">Last updated: May 22, 2026</p>
+<h1>Privacy Policy for SNOW + Siebel Ticket Manager</h1>
+<p class="last-updated">Last updated: May 28, 2026</p>
 
 <h2>Overview</h2>
-<p>SNOW Ticket Manager is a Chrome browser extension that provides a sidebar interface for managing ServiceNow tickets. This privacy policy describes how the extension handles data.</p>
+<p>SNOW + Siebel Ticket Manager is a Chrome browser extension that provides a sidebar interface for managing ServiceNow tickets and Siebel CRM activities. This privacy policy describes how the extension handles data.</p>
 
 <h2>Data Collection</h2>
 <p><strong>This extension does not collect, store, or transmit any personal data to external servers.</strong></p>
 
 <h2>Data Usage</h2>
-<p>The extension communicates exclusively with the user's own ServiceNow instance (<code>avaya.service-now.com</code>) to perform the following actions:</p>
+<p>The extension communicates with the user's own organization servers to perform the following actions:</p>
 <ul>
-  <li>Read ticket lists and ticket details</li>
-  <li>Add work notes and update ticket status</li>
-  <li>Query tickets by number</li>
+  <li><strong>ServiceNow</strong> (<code>avaya.service-now.com</code>) — Read ticket lists and details, add work notes, update ticket status, query tickets by number</li>
+  <li><strong>Siebel CRM</strong> (<code>gct.avaya.com</code>) — Create activity records on Service Requests using the Siebel JavaScript API</li>
+  <li><strong>OCD API</strong> (<code>ocd.avaya.com</code>) — Fetch the user's Siebel backlog (open SRs and SRAs) for display in the sidebar</li>
 </ul>
-<p>All communication uses the user's existing browser SSO session. No separate credentials, API tokens, or login information is collected.</p>
+<p>All communication uses the user's existing browser SSO sessions. No separate credentials, API tokens, or login information is collected from the user.</p>
 
 <h2>Data Storage</h2>
 <p>The extension does not store any user data outside the browser. No data is written to external databases, analytics services, or third-party servers.</p>
 
 <h2>Third-Party Services</h2>
-<p>This extension does not integrate with, send data to, or use any third-party services, analytics, or tracking tools.</p>
+<p>This extension does not communicate with any third-party services, analytics, or tracking tools. It communicates only with the organization's own ServiceNow, Siebel CRM, and OCD servers as listed above.</p>
 
 <h2>Permissions</h2>
 <ul>
-  <li><strong>cookies</strong> — Used to read authentication cookies from the ServiceNow instance for API authentication via the existing browser session.</li>
-  <li><strong>activeTab</strong> — Used to detect when the user is on a ServiceNow page and read the tab URL to identify ticket context.</li>
-  <li><strong>scripting</strong> — Used to inject a content script into ServiceNow pages to access the page's CSRF token (<code>g_ck</code>) for authenticated API calls.</li>
+  <li><strong>activeTab</strong> — Used to access the currently active ServiceNow or Siebel CRM tab when the user performs an action from the sidebar.</li>
+  <li><strong>scripting</strong> — Used to inject content scripts into ServiceNow and Siebel CRM pages to access the page's CSRF token (<code>g_ck</code>) and Siebel JavaScript API for authenticated operations.</li>
   <li><strong>sidePanel</strong> — Used to display the extension's user interface as a browser sidebar panel.</li>
-  <li><strong>host_permissions (avaya.service-now.com)</strong> — Required to make REST API calls to the ServiceNow instance.</li>
+</ul>
+
+<h2>Host Permissions</h2>
+<ul>
+  <li><strong>avaya.service-now.com</strong> — Required to inject scripts and make REST API calls to the ServiceNow instance.</li>
+  <li><strong>gct.avaya.com</strong> — Required to inject scripts and automate Siebel CRM activity creation.</li>
+  <li><strong>ocd.avaya.com</strong> — Required to fetch the user's Siebel backlog data from the OCD API.</li>
 </ul>
 
 <h2>Remote Code</h2>

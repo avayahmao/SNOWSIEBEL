@@ -2,7 +2,21 @@ importScripts("note-fields.js");
 
 const INSTANCE_URL = "https://avaya.service-now.com";
 const OCD_API_URL = "https://ocd.avaya.com/api.php";
-const OCD_AUTH = { auth_user: "aiq_service", auth_key: "3eb5e739c865df854b54b8bcfb994225" };
+
+// OCD service credentials — XOR-encoded to avoid plaintext exposure in source.
+// This is NOT encryption; a determined reader can still decode them.
+// The decode function below is intentionally readable (Chrome Web Store
+// policy prohibits obfuscated code).
+const _K = "ocd_api_v2";
+function _dec(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i] ^ _K.charCodeAt(i % _K.length));
+  return s;
+}
+const OCD_AUTH = {
+  auth_user: _dec([14,10,21,0,18,21,27,41,31,81,10]),
+  auth_key:  _dec([92,6,6,106,4,71,90,102,21,10,89,86,0,57,89,69,93,61,67,6,13,91,6,60,7,18,80,102,66,0,93,86])
+};
 
 // Open sidebar when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {

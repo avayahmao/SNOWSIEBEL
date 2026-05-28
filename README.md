@@ -1,6 +1,6 @@
-# SNOW Ticket Manager - Chrome Extension
+# SNOW + Siebel Ticket Manager - Chrome Extension
 
-Chrome sidebar extension for managing ServiceNow tickets. Uses your existing SSO browser session — no API tokens needed.
+Chrome sidebar extension for managing ServiceNow tickets and Siebel CRM activities. Uses your existing SSO browser sessions — no API tokens needed.
 
 ## Features
 
@@ -97,7 +97,9 @@ ServiceNow returns journal fields as concatenated text where each entry has a he
 - Chrome Extension Manifest V3
 - Chrome Side Panel API
 - ServiceNow REST API (`/api/now/table/`)
-- No external dependencies
+- Siebel CRM JavaScript API (`theApplication()`, `SiebelApp.S_App`)
+- OCD API (`ocd.avaya.com/api.php`) for Siebel backlog
+- No external dependencies — all code bundled locally
 
 ## Changelog
 

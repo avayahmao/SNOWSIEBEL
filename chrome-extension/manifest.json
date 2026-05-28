@@ -3,7 +3,7 @@
   "name": "SNOW + Siebel Ticket Manager",
 "version": "2.6",
   "description": "Manage ServiceNow tickets and add Siebel Activity notes from a Chrome sidebar using your existing SSO sessions",
-  "permissions": ["cookies", "activeTab", "scripting", "sidePanel", "storage"],
+  "permissions": ["activeTab", "scripting", "sidePanel"],
   "host_permissions": ["*://avaya.service-now.com/*", "*://gct.avaya.com/*", "*://ocd.avaya.com/*"],
   "action": {
     "default_icon": {
