@@ -1404,7 +1404,7 @@ function renderSblCard(item) {
   }
 
   let html = '<div class="sbl-card' + staleCls + '">';
-  html += '<div><span class="sbl-num">' + esc(item.activity_number) + '</span>';
+  html += '<div><a href="#" class="sbl-open-link sbl-num" data-siebel-id="' + esc(item.activity_number) + '" title="Open in Siebel">' + esc(item.activity_number) + '</a>';
   html += ' <span class="sbl-badge sbl-badge-type">' + esc(item._type) + '</span>';
   html += ' <span class="sbl-badge sbl-badge-status ' + statusClass + '">' + esc(item.activity_status_name) + '</span>';
   html += ' <span class="sbl-badge sbl-badge-severity">' + esc(item.activity_severity_name) + '</span>';
@@ -1418,7 +1418,7 @@ function renderSblCard(item) {
     html += '<div class="sbl-note-preview" title="Click to expand">' + truncatedNote + '</div>';
   }
   if (item._type === "SRA" && item.parent_activity_number) {
-    html += '<div class="sbl-parent">Parent SR: <a href="https://ocd.avaya.com/" target="_blank">' + esc(item.parent_activity_number) + '</a></div>';
+    html += '<div class="sbl-parent">Parent SR: <a href="#" class="sbl-open-link" data-siebel-id="' + esc(item.parent_activity_number) + '" title="Open SR in Siebel">' + esc(item.parent_activity_number) + '</a></div>';
   }
   html += '<div class="sbl-actions"><span class="sbl-add-note-link" data-sbl-id="' + esc(item.activity_number) + '">+ Add Note</span></div>';
   html += '</div>';
@@ -1439,6 +1439,26 @@ function timeAgo(timestamp) {
 
 // Delegated click handlers for Siebel backlog cards
 document.addEventListener("click", async (e) => {
+  // --- Open SR/Activity in Siebel ---
+  const openLink = e.target.closest(".sbl-open-link");
+  if (openLink) {
+    e.preventDefault();
+    const siebelId = openLink.dataset.siebelId;
+    if (!siebelId) return;
+    const origText = openLink.textContent;
+    openLink.textContent = "Opening...";
+    openLink.style.pointerEvents = "none";
+    try {
+      await send({ action: "openSiebel", siebelId: siebelId });
+      openLink.textContent = origText;
+    } catch (err) {
+      openLink.textContent = origText;
+      openLink.insertAdjacentHTML("afterend", '<span style="color:var(--danger);font-size:var(--text-sm);margin-left:4px">' + esc(err.message) + '</span>');
+    }
+    openLink.style.pointerEvents = "";
+    return;
+  }
+
   const addNoteLink = e.target.closest(".sbl-add-note-link");
   if (addNoteLink) {
     const activityId = addNoteLink.dataset.sblId;

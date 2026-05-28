@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.8] - 2026-05-28
+
+### Added
+- **Clickable SR/Activity IDs in Siebel Backlog** — Activity numbers and parent SR numbers are now hyperlinks. Clicking opens the SR or Activity directly in the existing Siebel/GCT tab (view-only, no record creation).
+- `openSiebel` message action in background.js — lightweight navigation to SR (via Base36 RowId) or Activity (direct RowId) without creating new records.
+
 ## [2.7] - 2026-05-28
 
 ### Changed

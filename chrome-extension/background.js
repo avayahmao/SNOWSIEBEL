@@ -489,6 +489,23 @@ async function handleMessage(msg) {
     return { userName: userName, items: allItems };
   }
 
+  // Open SR or Activity in Siebel (view-only, no record creation)
+  if (msg.action === "openSiebel") {
+    var gctTab;
+    try { gctTab = await findGctTab(); } catch (e) { throw new Error(e.message); }
+    await chrome.tabs.update(gctTab.id, { active: true });
+    var id = msg.siebelId;
+    if (!id) throw new Error("Siebel ID is required");
+    var isActivity = /^1-[A-Z0-9]+$/i.test(id) && /[A-Z]/i.test(id);
+    if (isActivity) {
+      await navigateGctTab(gctTab.id, "All Activity List View", [{ applet: "Activity List Applet With Navigation", rowId: id }]);
+    } else {
+      var rowId = srIdToBase36(id);
+      await navigateGctTab(gctTab.id, "All Service Request List View", [{ applet: "Service Request Detail Applet", rowId: rowId }]);
+    }
+    return { success: true };
+  }
+
   // GCT actions use a separate tab and don't need SNOW
   if (msg.action === "siebelCreateActivity") {
     const steps = [];
