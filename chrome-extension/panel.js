@@ -271,6 +271,20 @@ function staleDays(updatedOn) {
   return Math.floor((Date.now() - d.getTime()) / MS_PER_DAY);
 }
 
+// Extract numeric priority from SNOW priority field ("1 - Critical" → 1, "2 - High" → 2, etc.)
+function parsePriority(value) {
+  const dv = displayVal(value);
+  const m = dv.match(/^(\d+)/);
+  return m ? parseInt(m[1], 10) : 99; // unknown priority sorts last
+}
+
+// Siebel severity rank: OTG(0) > SBI(1) > BI(2) > NBI(3); unknown sorts last
+const SBL_SEVERITY_RANK = { "OTG": 0, "SBI": 1, "BI": 2, "NBI": 3 };
+function sblSeverityRank(name) {
+  const key = (name || "").trim().toUpperCase();
+  return SBL_SEVERITY_RANK[key] != null ? SBL_SEVERITY_RANK[key] : 99;
+}
+
 function staleBadge(updatedOn, state, table) {
   if (!isStale(updatedOn, state, table)) return "";
   const days = staleDays(updatedOn);
@@ -953,14 +967,14 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit });
-    // Defensive sort: oldest update first (stalest at top)
+    // Sort: priority ascending (P1 first), then stale days descending (stalest first)
     tickets.sort((a, b) => {
-      const da = parseUpdatedOn(a.sys_updated_on);
-      const db = parseUpdatedOn(b.sys_updated_on);
-      if (!da && !db) return 0;
-      if (!da) return 1;  // unparseable → end
-      if (!db) return -1; // unparseable → end
-      return da - db;
+      const pa = parsePriority(a.priority);
+      const pb = parsePriority(b.priority);
+      if (pa !== pb) return pa - pb;
+      const sa = staleDays(a.sys_updated_on);
+      const sb = staleDays(b.sys_updated_on);
+      return sb - sa;
     });
     if (!tickets.length) {
       listResult.innerHTML = '<div class="ticket-field" style="padding:8px">No tickets found</div>';
@@ -1340,7 +1354,15 @@ document.getElementById("btn-siebel-backlog").addEventListener("click", async ()
       return;
     }
 
-    resp.items.sort((a, b) => (parseInt(b.updated_time) || 0) - (parseInt(a.updated_time) || 0));
+    // Sort: severity (OTG→SBI→BI→NBI), then stale days descending
+    resp.items.sort((a, b) => {
+      const sa = sblSeverityRank(a.activity_severity_name);
+      const sb = sblSeverityRank(b.activity_severity_name);
+      if (sa !== sb) return sa - sb;
+      const ua = parseInt(a.updated_time) || 0;
+      const ub = parseInt(b.updated_time) || 0;
+      return ua - ub; // smaller timestamp = older = more stale → first
+    });
 
     let html = '<div class="result-box">';
     html += '<div class="ticket-field" style="margin-bottom:8px;color:var(--text-muted)">' + esc(resp.items.length) + ' items for ' + esc(userName) + '</div>';

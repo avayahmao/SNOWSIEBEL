@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.7] - 2026-05-28
+
+### Changed
+- **Priority-first sorting (SNOW List)** — Tickets now sort by Priority ascending (P1 first), then by stale days descending (most stale first within same priority). Previously sorted only by stale days.
+- **Severity-first sorting (Siebel Backlog)** — Backlog items now sort by Severity (OTG → SBI → BI → NBI), then by stale days descending. Previously sorted only by last updated time.
+
+### Added
+- `parsePriority()` helper — extracts numeric priority from SNOW display values (e.g. "1 - Critical" → 1).
+- `sblSeverityRank()` helper — maps Siebel severity names to sort rank (OTG=0, SBI=1, BI=2, NBI=3).
+- `tests/sort-verify.js` — 18-case test suite for sorting helpers and integration sort order.
+
 ## [2.6] - 2026-05-27
 
 ### Added

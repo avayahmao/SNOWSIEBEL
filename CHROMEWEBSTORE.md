@@ -3,7 +3,7 @@
 ## Listing Details
 
 - **Name:** SNOW + Siebel Ticket Manager
-- **Version:** 2.6
+- **Version:** 2.7
 - **Category:** Workflow & Planning
 - **Language:** English
 
