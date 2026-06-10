@@ -10,3 +10,7 @@ agents.md
 # Release artifacts — built locally, not version-controlled
 releases/*.zip
 *.zip
+*.7z
+*.rar
+*.tar.gz
+*.tgz
