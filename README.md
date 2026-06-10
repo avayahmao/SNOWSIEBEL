@@ -34,17 +34,17 @@ Alarm-generated INCs (detected by `contact_type = Alarm`) get a purple "Alarm" b
 - Sets status reason to "Alarm(s) Cleared on Access" on Resolved and Closed steps
 - Logs effort time if specified
 
-## Install
+## Install from Source (for development)
 
-1. Unzip the release package (or use the `chrome-extension` folder directly)
-2. Open `chrome://extensions`
-3. Enable **Developer mode** (top right)
-4. Click **Load unpacked** → select the `chrome-extension` folder
-5. Make sure you're logged into ServiceNow (`avaya.service-now.com`) in another tab
+Use this path only if you want to test local changes. Regular users should install from the Chrome Web Store (see the **Install** section above).
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (top right)
+3. Click **Load unpacked** → select the `chrome-extension` folder in this repo
 
 ## Usage
 
-Click the extension icon to open the sidebar. The default tab is **List** (auto-loads "My Open Tickets").
+Click the extension icon to open the sidebar. The default tab is **List** (auto-loads "My Open Tickets"). The extension uses your existing SSO session, so make sure you're logged in to ServiceNow (`avaya.service-now.com`) in another tab.
 
 ### Ticket types supported
 
