@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+:root {
+  --primary: #D9212C;
+  --primary-hover: #B81C25;
+  --primary-light: #FEF0F0;
+  --primary-ring: rgba(217,33,44,0.2);
+  --navy: #1B2A4A;
+  --navy-hover: #0F1B2D;
+  --navy-light: #E8ECF2;
+  --success: #00875A;
+  --success-hover: #006D48;
+  --success-light: #E8F5EF;
+  --danger: #D9212C;
+  --danger-hover: #B81C25;
+  --danger-light: #FEF0F0;
+  --warning: #D97706;
+  --warning-light: #FFF8E1;
+  --surface: #ffffff;
+  --surface-alt: #F5F6F8;
+  --surface-hover: #EDEEF1;
+  --border: #D5D8DC;
+  --border-light: #E8ECF2;
+  --text: #1A1A2E;
+  --text-secondary: #4A4A5A;
+  --text-muted: #8E8E9E;
+  /* Type scale */
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-md: 13px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 8px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --transition: 150ms cubic-bezier(0.4,0,0.2,1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body, button, input, select, textarea { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+body { font-size: var(--text-base); color: var(--text); background: var(--surface-alt); line-height: 1.5; }
+
+/* ── Header ── */
+.header {
+  background: linear-gradient(135deg, var(--navy) 0%, #0F1B2D 100%);
+  color: #fff; padding: 12px 14px; font-size: var(--text-md); font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  border-bottom: 2px solid var(--primary);
+}
+.header svg { width: 16px; height: 16px; opacity: 0.9; }
+
+/* ── Tabs ── */
+.tabs {
+  display: flex; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+  box-shadow: var(--shadow-sm);
+}
+.tab {
+  flex: 1; padding: 10px 4px 8px; text-align: center; cursor: pointer;
+  font-size: var(--text-sm); font-weight: 500; color: var(--text-muted);
+  border: none; background: none; transition: color var(--transition), border-color var(--transition);
+  border-bottom: 2px solid transparent; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.tab svg { width: 14px; height: 14px; transition: color var(--transition); }
+.tab:hover { color: var(--text-secondary); background: var(--surface-hover); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.tab.active svg { color: var(--primary); }
+.tab.tab-siebel.active { color: var(--navy); border-bottom-color: var(--navy); }
+.tab.tab-siebel.active svg { color: var(--navy); }
+
+/* ── Tab Divider ── */
+.tab-divider {
+  width: 1px; background: var(--border); margin: 6px 0;
+  flex-shrink: 0;
+}
+
+/* ── Panels ── */
+.panel { display: none; padding: 14px; }
+.panel.active { display: block; }
+.section-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.5px;
+  text-transform: uppercase; margin-bottom: 10px; padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.badge-snow { background: var(--primary-light); color: var(--primary); }
+.badge-siebel { background: var(--navy-light); color: var(--navy); }
+
+/* ── Form Groups ── */
+.form-group { margin-bottom: 10px; }
+.form-group label { display: block; font-weight: 600; margin-bottom: 4px; color: var(--text-secondary); font-size: var(--text-sm); }
+.form-group input, .form-group textarea, .form-group select {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: var(--text-base); color: var(--text); background: var(--surface);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.form-group input::placeholder, .form-group textarea::placeholder { color: var(--text-muted); }
+.form-group textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+  outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.form-group select { cursor: pointer; }
+
+/* ── Buttons ── */
+.btn-row { display: flex; gap: 8px; margin-top: 10px; }
+.btn {
+  padding: 8px 18px; border: none; border-radius: var(--radius); cursor: pointer;
+  font-size: var(--text-base); font-weight: 600; transition: all var(--transition);
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+}
+.btn-primary { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--primary-hover); box-shadow: var(--shadow); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-secondary { background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--surface-hover); border-color: var(--border); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: var(--danger-hover); }
+.btn-success { background: var(--success); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-success:hover { background: var(--success-hover); box-shadow: var(--shadow); transform: translateY(-1px); }
+.btn-success:active { transform: translateY(0); }
+.btn-success:disabled { background: var(--text-muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ── Result Box ── */
+.result-box {
+  margin-top: 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 0; font-size: var(--text-base); overflow: hidden;
+}
+.result-box:empty { display: none; }
+
+/* ── Ticket Cards ── */
+.ticket-card {
+  padding: 12px 14px; border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition);
+}
+.ticket-card:last-child { border-bottom: none; }
+.ticket-card:hover { background: var(--surface-alt); }
+.ticket-num { font-weight: 700; color: var(--primary); font-size: var(--text-md); }
+.ticket-field { color: var(--text-secondary); margin-top: 3px; line-height: 1.45; word-break: break-word; font-size: var(--text-sm); }
+.ticket-field b { color: var(--text); font-weight: 600; }
+
+/* ── State Badges ── */
+.state-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600;
+}
+.state-new { background: #DBEAFE; color: #1E40AF; }
+.state-active { background: #FEF3C7; color: #92400E; }
+.state-resolved { background: #D1FAE5; color: #065F46; }
+.state-closed { background: #F3F4F6; color: #4B5563; }
+
+/* ── Links ── */
+.toggle-link { color: var(--primary); cursor: pointer; font-size: var(--text-sm); margin-left: 4px; transition: color var(--transition); }
+.toggle-link:hover { color: var(--primary-hover); text-decoration: underline; }
+.sn-link { color: var(--primary); text-decoration: none; transition: color var(--transition); }
+.sn-link:hover { color: var(--primary-hover); text-decoration: underline; }
+
+/* ── Inline Action Links (in ticket cards) ── */
+.view-notes-link { color: var(--navy); cursor: pointer; margin-right: 12px; font-size: var(--text-sm); font-weight: 500; transition: color var(--transition); }
+.view-notes-link:hover { color: var(--primary); text-decoration: underline; }
+.add-note-link, .update-link { color: var(--primary); cursor: pointer; margin-right: 12px; font-size: var(--text-sm); font-weight: 500; transition: color var(--transition); }
+.add-note-link:hover, .update-link:hover { color: var(--primary-hover); text-decoration: underline; }
+.alarm-close-link { color: var(--success); cursor: pointer; font-weight: 600; font-size: var(--text-sm); transition: color var(--transition); }
+.alarm-close-link:hover { color: var(--success-hover); text-decoration: underline; }
+
+/* ── Inline Forms ── */
+.inline-form {
+  margin-top: 8px; padding: 10px; border-radius: var(--radius);
+  font-size: var(--text-base); border: 1px solid var(--border);
+}
+.inline-form-note { background: var(--navy-light); border-color: #B8C4D8; }
+.inline-form-note select, .inline-form-note input, .inline-form-note textarea { border-color: #B8C4D8; }
+.inline-form-note select:focus, .inline-form-note input:focus, .inline-form-note textarea:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(27,42,74,0.15); }
+
+.inline-form-update { background: #FFF8E1; border-color: #F5D98C; }
+.inline-form-update select, .inline-form-update input, .inline-form-update textarea { border-color: #F5D98C; }
+.inline-form-update select:focus, .inline-form-update input:focus, .inline-form-update textarea:focus { border-color: var(--warning); box-shadow: 0 0 0 3px rgba(217,119,6,0.15); }
+
+.inline-form-alarm { background: var(--success-light); border-color: #A7D8C0; }
+.inline-form-alarm select, .inline-form-alarm input, .inline-form-alarm textarea { border-color: #A7D8C0; }
+.inline-form-alarm select:focus, .inline-form-alarm input:focus, .inline-form-alarm textarea:focus { border-color: var(--success); box-shadow: 0 0 0 3px rgba(0,135,90,0.15); }
+
+/* ── Inline Form Elements ── */
+.inline-form label { font-weight: 600; display: block; margin-bottom: 3px; color: var(--text-secondary); font-size: var(--text-sm); }
+.inline-form select, .inline-form input[type="text"], .inline-form textarea {
+  width: 100%; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: var(--text-sm); background: var(--surface); color: var(--text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.inline-form textarea { resize: vertical; min-height: 44px; }
+.inline-form select:focus, .inline-form input[type="text"]:focus, .inline-form textarea:focus {
+  outline: none;
+}
+
+/* ── Status Messages ── */
+.inline-status-msg { font-size: var(--text-sm); margin-top: 4px; }
+.inline-err { font-size: var(--text-sm); margin-top: 4px; }
+
+/* ── Alarm Close Group (Action Panel) ── */
+.alarm-group {
+  display: none; margin-bottom: 12px; padding: 12px;
+  background: var(--success-light); border: 1px solid #A7D8C0; border-radius: var(--radius);
+}
+.alarm-group-title { font-weight: 600; font-size: var(--text-base); color: var(--success); margin-bottom: 8px; display: flex; align-items: center; gap: 4px; }
+
+/* ── Siebel Info Box ── */
+.info-box {
+  font-size: var(--text-sm); color: var(--text-secondary); margin: 8px 0; padding: 8px 10px;
+  background: var(--warning-light); border: 1px solid #F5D98C; border-radius: var(--radius);
+  line-height: 1.5;
+}
+.info-box b { color: var(--text); }
+
+/* ── Loading / Error / Success ── */
+.loading { text-align: center; padding: 24px 16px; color: var(--text-muted); }
+.loading::before {
+  content: ''; display: inline-block; width: 20px; height: 20px;
+  border: 2px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+  margin-right: 8px; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading::before { animation: none; }
+  .btn:hover { transform: none; }
+}
+
+.error {
+  color: var(--danger); background: var(--danger-light);
+  padding: 8px 10px; border-radius: var(--radius); margin-top: 4px;
+  font-size: var(--text-base); border: 1px solid #F5B7C1;
+}
+.success { color: #065F46; padding: 8px 10px; margin-top: 4px; font-size: var(--text-base); }
+
+/* ── Journal Entries ── */
+.journal-entry {
+  margin-top: 6px; padding: 6px 8px; background: var(--surface-alt);
+  border-left: 3px solid var(--border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--text-sm);
+}
+.journal-entry-worknote { border-left-color: var(--warning); }
+.journal-entry-comment { border-left-color: var(--navy); }
+.journal-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600;
+}
+.journal-badge-worknote { background: #FEF3C7; color: #92400E; }
+.journal-badge-comment { background: var(--navy-light); color: var(--navy); }
+
+/* ── Alarm Badge ── */
+.alarm-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: #F3E8FF; color: #7C3AED; padding: 2px 8px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; margin: 2px 0 3px;
+}
+
+/* ── Step Progress (Siebel) ── */
+.step-progress { margin-top: 6px; }
+.step-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-base); line-height: 1.6; color: var(--text-secondary);
+}
+.step-icon {
+  width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--text-xs); font-weight: 700; flex-shrink: 0;
+}
+.step-ok .step-icon { background: var(--success); color: #fff; }
+.step-ok .step-label { color: var(--text-secondary); }
+.step-fail .step-icon { background: var(--danger); color: #fff; }
+.step-fail .step-label { color: var(--danger); font-weight: 500; }
+
+/* ── Utility classes for JS-rendered content ── */
+.status-note { font-size: var(--text-sm); margin-top: 4px; }
+.status-note-success { color: var(--success); }
+.status-note-warning { color: var(--warning); }
+.status-note-muted { color: var(--text-muted); }
+.action-links-row { margin-top: 6px; font-size: var(--text-sm); display: flex; gap: 12px; }
+.current-state-info { color: var(--text-muted); font-size: var(--text-sm); padding: 4px 0; }
+.journal-meta { color: var(--text-muted); font-size: var(--text-xs); }
+
+/* ── Layout Helpers ── */
+.row-2 { display: flex; gap: 8px; }
+.row-2 > .form-group { flex: 1; }
+.effort-row { display: flex; gap: 6px; align-items: flex-end; }
+.effort-input { width: 80px !important; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #B8C4D8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8E9BB5; }
+
+/* ── Stale Ticket Highlight ── */
+/* Tier 1: Warning (7–13 days) */
+.ticket-card.stale-ticket {
+  border-left: 4px solid #E5A00D;
+  background: #FFF8E1;
+}
+.ticket-card.stale-ticket:hover {
+  background: #FFF0C2;
+}
+/* Tier 2: Critical (≥14 days) */
+.ticket-card.stale-critical-ticket {
+  border-left: 5px solid #D32F2F;
+  background: #FFEBEE;
+}
+.ticket-card.stale-critical-ticket:hover {
+  background: #FFCDD2;
+}
+.stale-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; margin-left: 6px;
+  color: #fff;
+}
+.stale-badge.stale-warn {
+  background: #E5A00D;
+  animation: stale-pulse 2s ease-in-out infinite;
+}
+.stale-badge.stale-critical {
+  background: #D32F2F;
+  animation: stale-pulse 1.5s ease-in-out infinite;
+}
+@keyframes stale-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── Siebel Backlog ── */
+.sbl-section-title { font-size: var(--text-sm); font-weight: 700; color: var(--navy); margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--border-light); }
+.sbl-card {
+  padding: 10px 14px; border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition);
+}
+.sbl-card:last-child { border-bottom: none; }
+.sbl-card:hover { background: var(--surface-alt); }
+.sbl-card.sbl-stale {
+  border-left: 4px solid #E5A00D;
+  background: #FFF8E1;
+}
+.sbl-card.sbl-stale:hover {
+  background: #FFF0C2;
+}
+.sbl-card.sbl-stale-critical {
+  border-left: 5px solid #D32F2F;
+  background: #FFEBEE;
+}
+.sbl-card.sbl-stale-critical:hover {
+  background: #FFCDD2;
+}
+.sbl-badge-stale {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; margin-left: 6px;
+  color: #fff;
+}
+.sbl-badge-stale.sbl-stale-warn { background: #E5A00D; animation: stale-pulse 2s ease-in-out infinite; }
+.sbl-badge-stale.sbl-stale-critical { background: #D32F2F; animation: stale-pulse 1.5s ease-in-out infinite; }
+.sbl-num { font-weight: 700; color: var(--navy); font-size: var(--text-md); }
+.sbl-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: var(--text-xs); font-weight: 600; margin-left: 6px; vertical-align: middle;
+}
+.sbl-badge-type { background: var(--navy-light); color: var(--navy); }
+.sbl-badge-status { background: #DBEAFE; color: #1E40AF; }
+.sbl-badge-status.sbl-status-working { background: #FEF3C7; color: #92400E; }
+.sbl-badge-status.sbl-status-in-progress { background: #FEF3C7; color: #92400E; }
+.sbl-badge-status.sbl-status-open { background: #DBEAFE; color: #1E40AF; }
+.sbl-badge-status.sbl-status-resolved { background: #D1FAE5; color: #065F46; }
+.sbl-badge-status.sbl-status-closed { background: #F3F4F6; color: #4B5563; }
+.sbl-badge-severity { background: #FEE2E2; color: #991B1B; }
+.sbl-field { color: var(--text-secondary); margin-top: 2px; line-height: 1.45; word-break: break-word; font-size: var(--text-sm); }
+.sbl-field b { color: var(--text); font-weight: 600; }
+.sbl-meta { color: var(--text-muted); font-size: var(--text-xs); margin-top: 3px; }
+.sbl-parent { color: var(--text-muted); font-size: var(--text-xs); margin-top: 2px; }
+.sbl-parent a { color: var(--navy); text-decoration: none; }
+.sbl-parent a:hover { text-decoration: underline; }
+.sbl-note-preview { color: var(--text-muted); font-size: var(--text-xs); margin-top: 3px; font-style: italic; max-height: 36px; overflow: hidden; cursor: pointer; transition: max-height 0.2s; }
+.sbl-note-preview.expanded { max-height: 500px; font-style: normal; color: var(--text-secondary); }
+.sbl-actions { margin-top: 6px; }
+.sbl-add-note-link { color: var(--primary); cursor: pointer; font-size: var(--text-sm); font-weight: 500; transition: color var(--transition); }
+.sbl-add-note-link:hover { color: var(--primary-hover); text-decoration: underline; }
+.sbl-loading { display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--text-muted); gap: 8px; }
+.sbl-loading::before { content: ""; display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--navy); border-radius: 50%; animation: spin 0.6s linear infinite; }
+.sbl-empty { color: var(--text-muted); text-align: center; padding: 24px; font-size: var(--text-sm); }
+.btn-siebel-load { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#D9212C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+  SNOW + Siebel Ticket Manager
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="list">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    List
+  </button>
+  <button class="tab" data-tab="comment">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    Note
+  </button>
+  <button class="tab" data-tab="action">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+    Action
+  </button>
+  <button class="tab" data-tab="query">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Query
+  </button>
+  <span class="tab-divider"></span>
+  <button class="tab tab-siebel" data-tab="siebel-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    Siebel
+  </button>
+</div>
+
+<!-- List Panel -->
+<div id="panel-list" class="panel active">
+  <div class="section-badge badge-snow">ServiceNow</div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Filter</label>
+      <select id="list-preset">
+        <option value="my-open">My Open Tickets</option>
+        <option value="my-updated">My Recently Updated</option>
+        <option value="my-resolved">My Resolved (7 days)</option>
+        <option value="awaiting">Awaiting User Info</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Limit</label>
+      <input id="list-limit" type="number" value="50" min="1" max="100">
+    </div>
+  </div>
+  <input id="list-query" type="hidden" value="active=true">
+  <input id="list-table" type="hidden" value="incident">
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-list">Search</button>
+  </div>
+  <div id="list-result" class="result-box"></div>
+</div>
+
+<!-- Comment Panel -->
+<div id="panel-comment" class="panel">
+  <div class="section-badge badge-snow">ServiceNow</div>
+  <div class="form-group">
+    <label>Ticket Number</label>
+    <input id="comment-number" placeholder="e.g. INC0012345">
+  </div>
+  <input type="hidden" id="comment-type" value="worknote">
+  <input type="hidden" id="comment-visibility" value="internal">
+  <div class="form-group">
+    <label>Work Note Type</label>
+    <select id="comment-note-type">
+      <option value="">-- Loading... --</option>
+    </select>
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Effort Time</label>
+      <input id="comment-effort" type="text" value="15" placeholder="e.g. 30  (minutes)">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <select id="comment-effort-unit">
+        <option value="minutes">Minutes</option>
+        <option value="hours">Hours</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-group">
+    <label>Message</label>
+    <textarea id="comment-text" placeholder="Enter comment..."></textarea>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-comment">Submit</button>
+  </div>
+  <div id="comment-result" class="result-box"></div>
+</div>
+
+<!-- Action Panel -->
+<div id="panel-action" class="panel">
+  <div class="section-badge badge-snow">ServiceNow</div>
+  <div class="form-group">
+    <label>Ticket Number</label>
+    <input id="action-number" placeholder="e.g. INC0012345">
+  </div>
+  <div id="alarm-close-group" class="alarm-group">
+    <div class="alarm-group-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Alarm Quick Close
+    </div>
+    <div class="form-group">
+      <label>Note Template</label>
+      <select id="alarm-template">
+        <option value="Investigated alarm, confirmed cleared. Closing ticket.">Investigated alarm, confirmed cleared</option>
+        <option value="Alarm(s) cleared on access. Verified system restored to normal operation.">Alarms cleared on access</option>
+        <option value="False alarm confirmed. No further action required.">False alarm confirmed</option>
+        <option value="">Custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Close Note</label>
+      <textarea id="alarm-note" rows="3" placeholder="Enter close note..."></textarea>
+    </div>
+    <div class="row-2">
+      <div class="form-group">
+        <label>Effort Time</label>
+        <input id="alarm-effort" type="text" placeholder="e.g. 15  (minutes)">
+      </div>
+      <div class="form-group">
+        <label>&nbsp;</label>
+        <select id="alarm-effort-unit">
+          <option value="minutes">Minutes</option>
+          <option value="hours">Hours</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-success" id="btn-alarm-close" style="width:100%">Close Alarm</button>
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>State</label>
+      <select id="action-state">
+        <option value="">-- Select --</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Status Reason</label>
+      <select id="action-status-reason">
+        <option value="">Select a state first</option>
+      </select>
+    </div>
+  </div>
+  <div class="form-group" id="action-followup-group" style="display:none">
+    <label>Follow-up Date & Time (required for Pending)</label>
+    <input id="action-followup" type="datetime-local">
+  </div>
+  <div class="form-group">
+    <label>Notes</label>
+    <textarea id="action-resolution" placeholder="Optional notes (added as work note with state change)"></textarea>
+  </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Effort Time</label>
+      <input id="action-effort" type="text" placeholder="e.g. 30  (minutes)">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <select id="action-effort-unit">
+        <option value="minutes">Minutes</option>
+        <option value="hours">Hours</option>
+      </select>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-update">Update</button>
+  </div>
+  <div id="action-result" class="result-box"></div>
+</div>
+
+<!-- Query Panel -->
+<div id="panel-query" class="panel">
+  <div class="section-badge badge-snow">ServiceNow</div>
+  <div class="form-group">
+    <label>Ticket Number</label>
+    <input id="query-number" placeholder="e.g. INC0012345, CHG0012345, PRB0012345">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-query">Search</button>
+  </div>
+  <div id="result" class="result-box"></div>
+</div>
+
+<!-- Siebel Note Panel -->
+<div id="panel-siebel-note" class="panel">
+  <div class="section-badge badge-siebel">Siebel CRM</div>
+  <div class="form-group">
+    <label>SR Number or Activity ID</label>
+    <input id="siebel-sr" placeholder="e.g. 1-23642931672 or 1-AUKUM2Z">
+  </div>
+  <div class="info-box">
+    Enter an <b>SR Number</b> to open the SR and create a new Activity. Enter an <b>Activity ID</b> (e.g. 1-AUKUM2Z) to jump directly to that Activity.
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btn-siebel-create">Add a Note in Siebel</button>
+  </div>
+  <div id="siebel-result" class="result-box"></div>
+  <div class="sbl-section-title">My Siebel Backlog</div>
+  <div class="form-group">
+    <label>Siebel Username</label>
+    <input id="sbl-username">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-primary btn-siebel-load" id="btn-siebel-backlog">Load Backlog</button>
+  </div>
+  <div id="siebel-backlog-results"></div>
+</div>
+
+<script src="note-fields.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>

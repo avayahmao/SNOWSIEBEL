@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — SNOW Ticket Manager</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
+  h1 { color: #1a73e8; }
+  h2 { color: #555; margin-top: 2em; }
+  .last-updated { color: #888; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy for SNOW + Siebel Ticket Manager</h1>
+<p class="last-updated">Last updated: May 28, 2026</p>
+
+<h2>Overview</h2>
+<p>SNOW + Siebel Ticket Manager is a Chrome browser extension that provides a sidebar interface for managing ServiceNow tickets and Siebel CRM activities. This privacy policy describes how the extension handles data.</p>
+
+<h2>Data Collection</h2>
+<p><strong>This extension does not collect, store, or transmit any personal data to external servers.</strong></p>
+
+<h2>Data Usage</h2>
+<p>The extension communicates with the user's own organization servers to perform the following actions:</p>
+<ul>
+  <li><strong>ServiceNow</strong> (<code>avaya.service-now.com</code>) — Read ticket lists and details, add work notes, update ticket status, query tickets by number</li>
+  <li><strong>Siebel CRM</strong> (<code>gct.avaya.com</code>) — Create activity records on Service Requests using the Siebel JavaScript API</li>
+  <li><strong>OCD API</strong> (<code>ocd.avaya.com</code>) — Fetch the user's Siebel backlog (open SRs and SRAs) for display in the sidebar</li>
+</ul>
+<p>All communication uses the user's existing browser SSO sessions. No separate credentials, API tokens, or login information is collected from the user.</p>
+
+<h2>Data Storage</h2>
+<p>The extension does not store any user data outside the browser. No data is written to external databases, analytics services, or third-party servers.</p>
+
+<h2>Third-Party Services</h2>
+<p>This extension does not communicate with any third-party services, analytics, or tracking tools. It communicates only with the organization's own ServiceNow, Siebel CRM, and OCD servers as listed above.</p>
+
+<h2>Permissions</h2>
+<ul>
+  <li><strong>activeTab</strong> — Used to access the currently active ServiceNow or Siebel CRM tab when the user performs an action from the sidebar.</li>
+  <li><strong>scripting</strong> — Used to inject content scripts into ServiceNow and Siebel CRM pages to access the page's CSRF token (<code>g_ck</code>) and Siebel JavaScript API for authenticated operations.</li>
+  <li><strong>sidePanel</strong> — Used to display the extension's user interface as a browser sidebar panel.</li>
+</ul>
+
+<h2>Host Permissions</h2>
+<ul>
+  <li><strong>avaya.service-now.com</strong> — Required to inject scripts and make REST API calls to the ServiceNow instance.</li>
+  <li><strong>gct.avaya.com</strong> — Required to inject scripts and automate Siebel CRM activity creation.</li>
+  <li><strong>ocd.avaya.com</strong> — Required to fetch the user's Siebel backlog data from the OCD API.</li>
+</ul>
+
+<h2>Remote Code</h2>
+<p>This extension does not load or execute any remotely hosted code. All code is bundled within the extension package.</p>
+
+<h2>Changes to This Policy</h2>
+<p>This privacy policy may be updated if the extension's functionality changes. Any updates will be reflected on this page with a revised "Last updated" date.</p>
+
+<h2>Contact</h2>
+<p>For questions about this privacy policy, please contact the extension developer through the Chrome Web Store listing.</p>
+
+</body>
+</html>
