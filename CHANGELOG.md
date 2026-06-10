@@ -14,6 +14,7 @@
 - **Inline form textareas enlarged 3×** — Add Note, Update Status, and Close Alarm inline textareas bumped from `rows="2"` to `rows="6"` for easier multi-line input during rapid triage.
 - **Auto-collapse inline forms on success** — Add Note, Update Status, and Close Alarm forms auto-hide 800 ms after a successful submission so the user can immediately move to the next ticket. Errors keep the form open so the user can correct and retry. Collapse timer is cleared on re-open to avoid stomping the form during the 800 ms window.
 - **Single-flight guard on lazy credential fetch** — Rapid double-clicks on `▶ Device Password` no longer trigger duplicate `getCredentials` requests.
+- **View Notes always refetches** — Each click on "View Notes" now refetches the journal from SNOW so the latest comments and work notes are always surfaced. Previously the first fetch was cached for the lifetime of the rendered list. Load More and Copy as MD continue to operate on the just-fetched data.
 
 ### Security
 - **Defensive CI sys_id handling** — All three CI helpers (`getCiDetailsBulkInPage`, `getCredentialsInPage`, `getCiDetailsInPage`) now validate sys_ids against `^[a-f0-9]{32}$` before URL interpolation. The bulk helper silently filters invalid IDs; the single-ID helpers fail closed with a clear error. `encodeURIComponent` is applied defensively to all sys_id values inserted into request URLs. Closes a latent query-string injection risk where malformed values from a SNOW response could splice unintended `sysparm_*` params.

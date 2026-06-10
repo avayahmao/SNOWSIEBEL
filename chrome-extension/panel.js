@@ -541,13 +541,7 @@ document.addEventListener("click", (e) => {
     var card = e.target.closest(".ticket-card");
     if (card) card.querySelectorAll(".inline-form").forEach(function(f) { f.style.display = "none"; });
 
-    // If container already has data, just show it
-    if (container && container._journalData) {
-      container.style.display = "block";
-      return;
-    }
-
-    // Create container and fetch
+    // Create container and fetch — always refetch on each open to surface latest notes
     if (!container) {
       var wrapper = document.createElement("div");
       wrapper.id = notesId;
