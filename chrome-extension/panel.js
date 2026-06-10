@@ -1062,9 +1062,10 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       if (t._ci && ciSysId) {
         html += `<div class="ticket-field" style="margin-top:6px"><b>Remote Access:</b></div>`;
         html += renderCiFields(t._ci);
-        const credKey = 'l-' + esc(String(ciSysId));
-        html += `<div class="ticket-field" style="margin-top:4px"><a class="load-creds-link" data-ci-sysid="${esc(ciSysId)}" data-prefix="${credKey}" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">&#9654; Device Password</a></div>`;
-        html += `<div class="creds-container" id="creds-${credKey}" style="display:none;margin-top:4px"></div>`;
+        const ciSysIdStr = String(ciSysId);
+        const credKey = 'l-' + ciSysIdStr;
+        html += `<div class="ticket-field" style="margin-top:4px"><a class="load-creds-link" data-ci-sysid="${esc(ciSysIdStr)}" data-prefix="${esc(credKey)}" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">&#9654; Device Password</a></div>`;
+        html += `<div class="creds-container" id="creds-${esc(credKey)}" style="display:none;margin-top:4px"></div>`;
       } else if (displayVal(t.cmdb_ci)) {
         html += `<div class="ticket-field" style="color:var(--text-muted)"><b>CI:</b> ${esc(displayVal(t.cmdb_ci))}</div>`;
       }

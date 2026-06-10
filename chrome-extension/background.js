@@ -326,6 +326,12 @@ function addTimeToParentInPage(table, sysId, minutesToAdd) {
 
 function getCiDetailsBulkInPage(ciSysIds) {
   if (!ciSysIds || ciSysIds.length === 0) return Promise.resolve({});
+  var hex32 = /^[a-f0-9]{32}$/i;
+  var clean = [];
+  for (var k = 0; k < ciSysIds.length; k++) {
+    if (hex32.test(String(ciSysIds[k]))) clean.push(String(ciSysIds[k]));
+  }
+  if (clean.length === 0) return Promise.resolve({});
   function dv(val) {
     if (val == null || val === "") return "";
     if (typeof val === "object") {
@@ -336,9 +342,9 @@ function getCiDetailsBulkInPage(ciSysIds) {
     return String(val);
   }
   var fields = "sys_id,name,ip_address,serial_number,asset_tag,u_se_id,u_nat_ip_address,u_primary_connectivity_method";
-  var url = "/api/now/table/cmdb_ci?sysparm_query=sys_idIN" + ciSysIds.join(",")
+  var url = "/api/now/table/cmdb_ci?sysparm_query=sys_idIN" + clean.join(",")
     + "&sysparm_display_value=all&sysparm_fields=" + fields
-    + "&sysparm_limit=" + ciSysIds.length;
+    + "&sysparm_limit=" + clean.length;
   return snowFetch("GET", url)
     .then(function(d) {
       var map = {};
@@ -361,6 +367,7 @@ function getCiDetailsBulkInPage(ciSysIds) {
 }
 
 function getCredentialsInPage(ciSysId) {
+  if (!/^[a-f0-9]{32}$/i.test(String(ciSysId))) return Promise.reject(new Error("Invalid CI sys_id"));
   function dv(val) {
     if (val == null || val === "") return "";
     if (typeof val === "object") {
@@ -370,7 +377,7 @@ function getCredentialsInPage(ciSysId) {
     }
     return String(val);
   }
-  return snowFetch("GET", "/api/now/table/u_cmdb_passwords?sysparm_query=u_configuration_item=" + ciSysId + "^u_active=true&sysparm_fields=u_username,u_password,u_login_type,u_access_type&sysparm_limit=20&sysparm_display_value=all")
+  return snowFetch("GET", "/api/now/table/u_cmdb_passwords?sysparm_query=u_configuration_item=" + encodeURIComponent(ciSysId) + "^u_active=true&sysparm_fields=u_username,u_password,u_login_type,u_access_type&sysparm_limit=20&sysparm_display_value=all")
     .then(function(d) {
       var rows = d.result || [];
       var out = [];
@@ -387,6 +394,7 @@ function getCredentialsInPage(ciSysId) {
 }
 
 function getCiDetailsInPage(ciSysId) {
+  if (!/^[a-f0-9]{32}$/i.test(String(ciSysId))) return Promise.resolve({ _error: "Invalid CI sys_id" });
   // Helper to extract display value — runs in page context where panel.js displayVal is unavailable
   function dv(val) {
     if (val == null || val === "") return "";
@@ -398,7 +406,7 @@ function getCiDetailsInPage(ciSysId) {
     return String(val);
   }
   var allFields = "name,ip_address,serial_number,asset_tag,u_se_id,u_nat_ip_address,u_primary_connectivity_method";
-  return snowFetch("GET", "/api/now/table/cmdb_ci/" + ciSysId + "?sysparm_display_value=all&sysparm_fields=" + allFields)
+  return snowFetch("GET", "/api/now/table/cmdb_ci/" + encodeURIComponent(ciSysId) + "?sysparm_display_value=all&sysparm_fields=" + allFields)
     .then(function(d) {
       var result = d.result;
       if (!result) return null;
@@ -410,7 +418,7 @@ function getCiDetailsInPage(ciSysId) {
         connectivity: dv(result.u_primary_connectivity_method),
       };
       // Fetch device credentials from u_cmdb_passwords
-      return snowFetch("GET", "/api/now/table/u_cmdb_passwords?sysparm_query=u_configuration_item=" + ciSysId + "^u_active=true&sysparm_fields=u_username,u_password,u_login_type,u_access_type&sysparm_limit=10&sysparm_display_value=all")
+      return snowFetch("GET", "/api/now/table/u_cmdb_passwords?sysparm_query=u_configuration_item=" + encodeURIComponent(ciSysId) + "^u_active=true&sysparm_fields=u_username,u_password,u_login_type,u_access_type&sysparm_limit=10&sysparm_display_value=all")
         .then(function(dd) {
           if (dd.result && dd.result.length > 0) {
             ciData.credentials = dd.result.map(function(r) {
