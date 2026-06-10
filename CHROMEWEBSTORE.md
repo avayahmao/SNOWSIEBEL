@@ -3,7 +3,7 @@
 ## Listing Details
 
 - **Name:** SNOW + Siebel Ticket Manager
-- **Version:** 2.8
+- **Version:** 2.9
 - **Category:** Workflow & Planning
 - **Language:** English
 
@@ -19,7 +19,7 @@ SNOW + Siebel Ticket Manager is a Chrome sidebar extension for managing ServiceN
 
 ### ServiceNow Features
 
-- **List** — View your open tickets with quick filter presets (My Open, Recently Updated, Resolved, Awaiting User Info). Inline actions let you add notes, update status, or close alarm INCs without switching tabs. Stale tickets are highlighted: yellow for ≥7 days, red with pulsing badge for ≥14 days since last update.
+- **List** — View your open tickets with quick filter presets (My Open, Recently Updated, Resolved, Awaiting User Info). Inline actions let you add notes, update status, or close alarm INCs without switching tabs. Stale tickets are highlighted: yellow for ≥7 days, red with pulsing badge for ≥14 days since last update. Remote Access info (IP, SE ID, NAT IP, Connectivity) is shown inline on every card; device credentials lazy-load on click.
 - **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time tracking, and message. Default type is "Internal Only". All notes are internal (ACL restriction on public comments).
 - **Action** — Update ticket state with per-table state dropdowns, status reason, follow-up datetime, and resolution notes. State options adapt to the detected ticket type. Alarm INCs get a dedicated quick-close section. CI Remote Access shows device info and credentials.
 - **Query** — Search any ticket by number to view full details, CI Remote Access info, device passwords, and activity log.

@@ -305,36 +305,49 @@ function formatField(label, value) {
   return `<div class="ticket-field"><b>${esc(label)}:</b> ${esc(dv)}</div>`;
 }
 
-// Render CI Remote Access block (reusable for query & action tabs)
-function renderCiBlock(ci, prefix) {
+// Render CI fields only (no credentials) — used inline on list cards
+function renderCiFields(ci) {
   var h = '';
   if (ci.ciName) h += '<div class="ticket-field"><b>CI Name:</b> ' + esc(ci.ciName) + '</div>';
   if (ci.seId) h += '<div class="ticket-field"><b>SE ID:</b> ' + esc(ci.seId) + '</div>';
   if (ci.ipAddress) h += '<div class="ticket-field"><b>IP:</b> ' + esc(ci.ipAddress) + '</div>';
   if (ci.natIp) h += '<div class="ticket-field"><b>NAT IP:</b> ' + esc(ci.natIp) + '</div>';
   if (ci.connectivity) h += '<div class="ticket-field"><b>Connectivity:</b> ' + esc(ci.connectivity) + '</div>';
-  // Device credentials — collapsible section, collapsed by default
+  return h;
+}
+
+// Render device credentials list (used both inline and lazily)
+function renderCredentialsBlock(prefix, credentials) {
+  if (!credentials || credentials.length === 0) return '';
+  var h = '';
+  for (var i = 0; i < credentials.length; i++) {
+    var cred = credentials[i];
+    var credLabel = (cred.loginType || 'Login') + (cred.accessType ? ' (' + cred.accessType + ')' : '');
+    h += '<div style="margin-top:4px;padding:3px 6px;background:var(--card-bg);border:1px solid var(--border);border-radius:4px">';
+    h += '<div style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:2px">' + esc(credLabel) + '</div>';
+    if (cred.username) h += '<div><b>User:</b> ' + esc(cred.username) + '</div>';
+    if (cred.password) {
+      var pwId = prefix + '-pw-' + i + '-' + Math.random().toString(36).slice(2, 6);
+      h += '<div><b>Pass:</b> '
+        + '<span id="' + pwId + '-mask" class="ci-pw-masked">••••••••</span>'
+        + '<span id="' + pwId + '-text" style="display:none">' + esc(cred.password) + '</span>'
+        + ' <a class="toggle-pw" data-pw-id="' + pwId + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">show</a>'
+        + '</div>';
+    }
+    h += '</div>';
+  }
+  return h;
+}
+
+// Render CI Remote Access block (reusable for query & action tabs)
+function renderCiBlock(ci, prefix) {
+  var h = renderCiFields(ci);
   if (ci.credentials && ci.credentials.length > 0) {
     var credSecId = prefix + '-cred-' + Math.random().toString(36).slice(2, 6);
     h += '<div class="ticket-field" style="margin-top:6px">';
     h += '<a class="toggle-cred" data-cred-id="' + credSecId + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">&#9654; Device Password (' + ci.credentials.length + ')</a>';
     h += '<div id="' + credSecId + '" style="display:none;margin-top:4px">';
-    for (var ci_i = 0; ci_i < ci.credentials.length; ci_i++) {
-      var cred = ci.credentials[ci_i];
-      var credLabel = (cred.loginType || 'Login') + (cred.accessType ? ' (' + cred.accessType + ')' : '');
-      h += '<div style="margin-top:4px;padding:3px 6px;background:var(--card-bg);border:1px solid var(--border);border-radius:4px">';
-      h += '<div style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:2px">' + esc(credLabel) + '</div>';
-      if (cred.username) h += '<div><b>User:</b> ' + esc(cred.username) + '</div>';
-      if (cred.password) {
-        var pwId = prefix + '-pw-' + ci_i + '-' + Math.random().toString(36).slice(2, 6);
-        h += '<div><b>Pass:</b> '
-          + '<span id="' + pwId + '-mask" class="ci-pw-masked">••••••••</span>'
-          + '<span id="' + pwId + '-text" style="display:none">' + esc(cred.password) + '</span>'
-          + ' <a class="toggle-pw" data-pw-id="' + pwId + '" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">show</a>'
-          + '</div>';
-      }
-      h += '</div>';
-    }
+    h += renderCredentialsBlock(prefix, ci.credentials);
     h += '</div></div>';
   }
   return h;
@@ -420,6 +433,46 @@ document.addEventListener("click", (e) => {
       sec.style.display = 'none';
       e.target.innerHTML = '&#9654; Device Password (' + sec.children.length + ')';
     }
+    return;
+  }
+  // --- Lazy-load device credentials on list cards ---
+  if (e.target.classList.contains("load-creds-link")) {
+    e.preventDefault();
+    var link = e.target;
+    var ciSysId = link.dataset.ciSysid;
+    var prefix = link.dataset.prefix;
+    var container = document.getElementById("creds-" + prefix);
+    if (!container) return;
+    if (link._loading) return;
+    if (link._loaded) {
+      if (container.style.display === "none") {
+        container.style.display = "block";
+        link.innerHTML = "&#9660; Device Password" + (link._count ? " (" + link._count + ")" : "");
+      } else {
+        container.style.display = "none";
+        link.innerHTML = "&#9654; Device Password" + (link._count ? " (" + link._count + ")" : "");
+      }
+      return;
+    }
+    link._loading = true;
+    container.style.display = "block";
+    container.innerHTML = '<div class="loading">Loading credentials...</div>';
+    send({ action: "getCredentials", ciSysId: ciSysId })
+      .then(function(creds) {
+        link._loading = false;
+        link._loaded = true;
+        link._count = (creds && creds.length) || 0;
+        link.innerHTML = "&#9660; Device Password" + (link._count ? " (" + link._count + ")" : "");
+        if (!creds || creds.length === 0) {
+          container.innerHTML = '<div class="ticket-field" style="color:var(--text-muted)">No active credentials</div>';
+        } else {
+          container.innerHTML = renderCredentialsBlock(prefix, creds);
+        }
+      })
+      .catch(function(err) {
+        link._loading = false;
+        container.innerHTML = '<div class="error">' + userFacingError(err.message) + '</div>';
+      });
     return;
   }
   // --- Toggle password visibility ---
@@ -583,6 +636,7 @@ document.addEventListener("click", (e) => {
       form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
       const textEl = form.querySelector(".inline-note-text");
       if (textEl) textEl.style.borderColor = "";
+      if (form._collapseTimer) { clearTimeout(form._collapseTimer); form._collapseTimer = null; }
       form.style.display = "block";
       return;
     }
@@ -595,7 +649,7 @@ document.addEventListener("click", (e) => {
       + '<select class="inline-note-effort-unit" style="margin-bottom:0"><option value="minutes">min</option><option value="hours">hr</option></select>'
       + '</div>'
       + '<div style="margin-bottom:4px"><label>Message</label>'
-      + '<textarea class="inline-note-text" rows="2" placeholder="Enter note..."></textarea></div>'
+      + '<textarea class="inline-note-text" rows="6" placeholder="Enter note..."></textarea></div>'
       + '<button class="btn btn-primary add-note-exec" data-ticket="' + esc(ticket) + '" data-form="' + formId + '" style="width:100%;padding:5px 8px">Submit</button>'
       + '</div>';
     e.target.parentElement.insertAdjacentHTML("afterend", formHtml);
@@ -636,6 +690,8 @@ document.addEventListener("click", (e) => {
           else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="status-note status-note-success">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
         }
         btn.insertAdjacentHTML("afterend", msgHtml);
+        if (form._collapseTimer) clearTimeout(form._collapseTimer);
+        form._collapseTimer = setTimeout(function() { if (form) form.style.display = "none"; }, 800);
       })
       .catch((err) => { btn.disabled = false; btn.textContent = "Submit"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + userFacingError(err.message) + '</div>'); });
   }
@@ -657,6 +713,7 @@ document.addEventListener("click", (e) => {
       if (stateEl) stateEl.style.borderColor = "";
       const followupEl = form.querySelector(".inline-followup");
       if (followupEl) followupEl.style.borderColor = "";
+      if (form._collapseTimer) { clearTimeout(form._collapseTimer); form._collapseTimer = null; }
       form.style.display = "block";
       return;
     }
@@ -679,7 +736,7 @@ document.addEventListener("click", (e) => {
       + '</div>'
       + followupHtml
       + '<div style="margin-bottom:4px"><label>Notes</label>'
-      + '<textarea class="inline-update-notes" rows="2" placeholder="Optional notes..."></textarea></div>'
+      + '<textarea class="inline-update-notes" rows="6" placeholder="Optional notes..."></textarea></div>'
       + '<div class="effort-row" style="margin-bottom:4px">'
       + '<div><label>Effort</label><input class="inline-update-effort effort-input" type="text" placeholder="min"></div>'
       + '<select class="inline-update-effort-unit" style="margin-bottom:0"><option value="minutes">min</option><option value="hours">hr</option></select>'
@@ -742,6 +799,8 @@ document.addEventListener("click", (e) => {
           else { var hrs = Math.floor(effortMinutes / 60); var mins = effortMinutes % 60; msgHtml += '<div class="status-note status-note-success">Effort: ' + (hrs > 0 ? hrs + 'h ' + mins + 'm' : mins + ' min') + ' recorded</div>'; }
         }
         btn.insertAdjacentHTML("afterend", msgHtml);
+        if (form._collapseTimer) clearTimeout(form._collapseTimer);
+        form._collapseTimer = setTimeout(function() { if (form) form.style.display = "none"; }, 800);
       })
       .catch((err) => { btn.disabled = false; btn.textContent = "Update"; btn.insertAdjacentHTML("afterend", '<div class="inline-err error" style="margin-top:2px">' + userFacingError(err.message) + '</div>'); });
   }
@@ -761,6 +820,7 @@ document.addEventListener("click", (e) => {
       form.querySelectorAll(".inline-status-msg, .inline-err").forEach(function(el) { el.remove(); });
       const noteInput = form.querySelector(".alarm-note-input");
       if (noteInput) noteInput.style.borderColor = "";
+      if (form._collapseTimer) { clearTimeout(form._collapseTimer); form._collapseTimer = null; }
       form.style.display = "block";
       return;
     }
@@ -774,7 +834,7 @@ document.addEventListener("click", (e) => {
       + '<option value="">Custom</option>'
       + '</select></div>'
       + '<div style="margin-bottom:4px"><label>Close Note</label>'
-      + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="2">' + esc(defaultTmpl) + '</textarea></div>'
+      + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="6">' + esc(defaultTmpl) + '</textarea></div>'
       + '<div class="effort-row">'
       + '<div><label>Effort</label><input class="alarm-effort-input effort-input" data-form="' + formId + '" type="text" placeholder="min"></div>'
       + '<select class="alarm-effort-unit" style="margin-bottom:0"><option value="minutes">min</option><option value="hours">hr</option></select>'
@@ -833,6 +893,8 @@ document.addEventListener("click", (e) => {
         }
         const container = btn.parentElement;
         container.insertAdjacentHTML("afterend", msgHtml);
+        if (form._collapseTimer) clearTimeout(form._collapseTimer);
+        form._collapseTimer = setTimeout(function() { if (form) form.style.display = "none"; }, 800);
       })
       .catch((err) => {
         btn.disabled = false;
@@ -966,7 +1028,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   const limit = parseInt(document.getElementById("list-limit").value) || 10;
   showLoading(listResult);
   try {
-    const tickets = await send({ action: "listTickets", table, query, limit });
+    const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
     // Sort: priority ascending (P1 first), then stale days descending (stalest first)
     tickets.sort((a, b) => {
       const pa = parsePriority(a.priority);
@@ -995,8 +1057,29 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       html += formatField("Priority", t.priority);
       html += formatField("Assigned to", t.assigned_to);
       html += formatField("Updated", t.sys_updated_on);
-      var ciNameList = displayVal(t.cmdb_ci);
-      if (ciNameList) html += `<div class="ticket-field" style="color:var(--text-muted)"><b>CI:</b> ${esc(ciNameList)}</div>`;
+      const ciRef = t.cmdb_ci;
+      const ciSysId = (ciRef && typeof ciRef === "object") ? ciRef.value : ciRef;
+      if (t._ci && ciSysId) {
+        html += `<div class="ticket-field" style="margin-top:6px"><b>Remote Access:</b></div>`;
+        html += renderCiFields(t._ci);
+        const credKey = 'l-' + esc(String(ciSysId));
+        html += `<div class="ticket-field" style="margin-top:4px"><a class="load-creds-link" data-ci-sysid="${esc(ciSysId)}" data-prefix="${credKey}" style="cursor:pointer;color:var(--primary);font-size:var(--text-sm)">&#9654; Device Password</a></div>`;
+        html += `<div class="creds-container" id="creds-${credKey}" style="display:none;margin-top:4px"></div>`;
+      } else if (displayVal(t.cmdb_ci)) {
+        html += `<div class="ticket-field" style="color:var(--text-muted)"><b>CI:</b> ${esc(displayVal(t.cmdb_ci))}</div>`;
+      }
+      const lDesc = displayVal(t.description);
+      if (lDesc) {
+        if (lDesc.length > 300) {
+          const lDetId = "ldet-" + Math.random().toString(36).slice(2, 8);
+          html += `<div class="ticket-field"><b>Details:</b> `;
+          html += `<span id="${lDetId}-short">${esc(lDesc.substring(0, 300))}... <a class="toggle-link" data-action="expand" data-id="${lDetId}">show all</a></span>`;
+          html += `<span id="${lDetId}-full" style="display:none">${esc(lDesc)} <a class="toggle-link" data-action="collapse" data-id="${lDetId}">collapse</a></span>`;
+          html += `</div>`;
+        } else {
+          html += formatField("Details", lDesc);
+        }
+      }
       html += `<div class="action-links-row">`;
       html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;

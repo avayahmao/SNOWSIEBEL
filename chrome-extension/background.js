@@ -256,7 +256,7 @@ function getTicketInPage(table, ticketNumber) {
 
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
-params.set("sysparm_fields", fields || "number,short_description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci");
+params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci");
   return snowFetch("GET", "/api/now/table/" + table + "?" + params)
     .then(function(d) { return d.result || []; });
 }
@@ -322,6 +322,68 @@ function addTimeToParentInPage(table, sysId, minutesToAdd) {
       return snowFetch("PUT", "/api/now/table/" + table + "/" + sysId, { time_worked: dur });
     })
     .then(function(d) { return d.result ? d.result.time_worked : null; });
+}
+
+function getCiDetailsBulkInPage(ciSysIds) {
+  if (!ciSysIds || ciSysIds.length === 0) return Promise.resolve({});
+  function dv(val) {
+    if (val == null || val === "") return "";
+    if (typeof val === "object") {
+      if (val.display_value != null && val.display_value !== "") return String(val.display_value);
+      if (val.value != null && val.value !== "") return String(val.value);
+      return "";
+    }
+    return String(val);
+  }
+  var fields = "sys_id,name,ip_address,serial_number,asset_tag,u_se_id,u_nat_ip_address,u_primary_connectivity_method";
+  var url = "/api/now/table/cmdb_ci?sysparm_query=sys_idIN" + ciSysIds.join(",")
+    + "&sysparm_display_value=all&sysparm_fields=" + fields
+    + "&sysparm_limit=" + ciSysIds.length;
+  return snowFetch("GET", url)
+    .then(function(d) {
+      var map = {};
+      var rows = d.result || [];
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var sid = dv(r.sys_id);
+        if (!sid) continue;
+        map[sid] = {
+          ciName: dv(r.name),
+          seId: dv(r.u_se_id) || dv(r.serial_number) || dv(r.asset_tag) || "",
+          ipAddress: dv(r.ip_address),
+          natIp: dv(r.u_nat_ip_address),
+          connectivity: dv(r.u_primary_connectivity_method)
+        };
+      }
+      return map;
+    })
+    .catch(function() { return {}; });
+}
+
+function getCredentialsInPage(ciSysId) {
+  function dv(val) {
+    if (val == null || val === "") return "";
+    if (typeof val === "object") {
+      if (val.display_value != null && val.display_value !== "") return String(val.display_value);
+      if (val.value != null && val.value !== "") return String(val.value);
+      return "";
+    }
+    return String(val);
+  }
+  return snowFetch("GET", "/api/now/table/u_cmdb_passwords?sysparm_query=u_configuration_item=" + ciSysId + "^u_active=true&sysparm_fields=u_username,u_password,u_login_type,u_access_type&sysparm_limit=20&sysparm_display_value=all")
+    .then(function(d) {
+      var rows = d.result || [];
+      var out = [];
+      for (var i = 0; i < rows.length; i++) {
+        out.push({
+          username: dv(rows[i].u_username),
+          password: dv(rows[i].u_password),
+          loginType: dv(rows[i].u_login_type),
+          accessType: dv(rows[i].u_access_type)
+        });
+      }
+      return out;
+    });
 }
 
 function getCiDetailsInPage(ciSysId) {
@@ -617,7 +679,34 @@ async function handleMessage(msg) {
   }
 
   if (msg.action === "listTickets") {
-    return injectAndExec(tab.id, listTicketsInPage, [msg.table, msg.query, msg.limit, msg.fields || null]);
+    const tickets = await injectAndExec(tab.id, listTicketsInPage, [msg.table, msg.query, msg.limit, msg.fields || null]);
+    if (msg.includeCi && tickets && tickets.length > 0) {
+      const seen = {};
+      const ciSysIds = [];
+      for (let i = 0; i < tickets.length; i++) {
+        const ref = tickets[i].cmdb_ci;
+        const sid = (ref && typeof ref === "object") ? ref.value : ref;
+        if (sid && !seen[sid]) { seen[sid] = true; ciSysIds.push(sid); }
+      }
+      if (ciSysIds.length > 0) {
+        try {
+          const ciMap = await injectAndExec(tab.id, getCiDetailsBulkInPage, [ciSysIds]);
+          if (ciMap) {
+            for (let i = 0; i < tickets.length; i++) {
+              const ref = tickets[i].cmdb_ci;
+              const sid = (ref && typeof ref === "object") ? ref.value : ref;
+              if (sid && ciMap[sid]) tickets[i]._ci = ciMap[sid];
+            }
+          }
+        } catch (e) { /* graceful: list still renders without _ci */ }
+      }
+    }
+    return tickets;
+  }
+
+  if (msg.action === "getCredentials") {
+    if (!msg.ciSysId) throw new Error("ciSysId is required");
+    return injectAndExec(tab.id, getCredentialsInPage, [msg.ciSysId]);
   }
 
   if (msg.action === "debugFields") {

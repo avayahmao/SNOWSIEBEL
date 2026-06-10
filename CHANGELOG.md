@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.9] - 2026-06-10
+
+### Added
+- **Remote Access info on SNOW List cards** — IP, SE ID, NAT IP, and Connectivity are now rendered inline on every list card. CI records are bulk-fetched via a single `cmdb_ci?sysparm_query=sys_idIN...` request per Search, so a 50-ticket list adds one extra round-trip regardless of list size (no N+1).
+- **Lazy-loaded Device Password section** — Device credentials are fetched on demand when the "▶ Device Password" link is clicked, then cached on the DOM node. Avoids preloading sensitive data for tickets the user only listed.
+- **Details field on List cards** — Long descriptions (`description` field) now render under each card with the same 300-char truncate + `show all`/`collapse` toggle used by the Query tab. Added to the bulk `sysparm_fields` so no extra request.
+- `getCiDetailsBulkInPage`, `getCredentialsInPage` helpers in background.js; new `getCredentials` message action.
+
+### Changed
+- `listTickets` background handler accepts `includeCi: true` and merges `_ci` onto each ticket via the bulk fetch. On bulk-fetch failure the list renders without `_ci` (graceful degradation; old `CI: <name>` fallback line preserved).
+- `renderCiBlock()` split into `renderCiFields()` + `renderCredentialsBlock()`; Query and Action tab behavior unchanged.
+- **Inline form textareas enlarged 3×** — Add Note, Update Status, and Close Alarm inline textareas bumped from `rows="2"` to `rows="6"` for easier multi-line input during rapid triage.
+- **Auto-collapse inline forms on success** — Add Note, Update Status, and Close Alarm forms auto-hide 800 ms after a successful submission so the user can immediately move to the next ticket. Errors keep the form open so the user can correct and retry. Collapse timer is cleared on re-open to avoid stomping the form during the 800 ms window.
+- **Single-flight guard on lazy credential fetch** — Rapid double-clicks on `▶ Device Password` no longer trigger duplicate `getCredentials` requests.
+
 ## [2.8] - 2026-05-28
 
 ### Added
