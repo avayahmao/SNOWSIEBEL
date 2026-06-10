@@ -2,6 +2,10 @@
 
 Chrome sidebar extension for managing ServiceNow tickets and Siebel CRM activities. Uses your existing SSO browser sessions — no API tokens needed.
 
+## Install
+
+Install from the Chrome Web Store: [SNOW + Siebel Ticket Manager](https://chromewebstore.google.com/detail/snow-+-siebel-ticket-mana/aeeegdlebkallkmfgmkpffbmlpjinpkg)
+
 ## Features
 
 - **List** — View your tickets with quick filter presets (My Open, My Recently Updated, My Resolved, Awaiting User Info). Inline actions on each ticket card let you add notes, update status, or close alarm INCs without switching tabs.
