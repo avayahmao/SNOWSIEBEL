@@ -1,3 +1,12 @@
 .claude/
 
 .worktrees/
+
+# Agent / AI assistant instructions — kept local, not shared
+CLAUDE.md
+AGENTS.md
+agents.md
+
+# Release artifacts — built locally, not version-controlled
+releases/*.zip
+*.zip
