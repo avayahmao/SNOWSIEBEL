@@ -134,7 +134,7 @@ var cachedAssignmentGroupSysId = null;
 
 - [ ] **Step 2: Add the page function**
 
-In `chrome-extension/background.js`, add this new page function **immediately after** the existing `getUserIdInPage` function (which ends at line 289). It runs both queries via `Promise.all` inside a single `injectAndExec` call so it costs one message, not two:
+In `chrome-extension/background.js`, add this new page function **immediately after** the existing `getUserIdInPage` function (closing brace at line 288; insert at the blank line 289). It runs both queries via `Promise.all` inside a single `injectAndExec` call so it costs one message, not two:
 
 ```js
 function getInfinityFilterParamsInPage() {
@@ -222,7 +222,7 @@ In `chrome-extension/background.js`, inside `handleMessage`, add a new branch **
   }
 ```
 
-The `sys_id` extraction pattern (`typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id`) is copied verbatim from the existing `getTicket` handler (background.js:670) and `alarmClose` handler (background.js:736).
+The `sys_id` extraction pattern (`typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id`) is copied verbatim from the existing `getTicket` handler (background.js:670) and `alarmClose` handler (background.js:734).
 
 - [ ] **Step 2: Verify the message is reachable**
 
