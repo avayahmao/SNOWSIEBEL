@@ -2,7 +2,9 @@
 
 **Date:** 2026-06-21
 **Status:** Approved (pending spec review)
-**Target release:** v2.9
+**Target release:** v2.10
+
+> **Rebase note (2026-06-21):** This spec was originally written against v2.8. The repo has since shipped v2.9 (Remote Access + Details on List cards, CI sys_id validation, lazy credentials, View Notes always-refetch). v2.9 is published to the Chrome Web Store, so this feature targets **v2.10**. The v2.9 changes do not alter the design — they only shift line numbers and add a useful side effect: the list handler now sends `includeCi: true`, so Infinity cards automatically get Remote Access info too. Line references below point at the post-rebase codebase.
 
 ## Problem
 
@@ -79,7 +81,7 @@ Add a `PRESETS` entry in `panel.js`. Because two query parameters are only known
 "infinity-alarms": "__INFINITY_ALARMS__"
 ```
 
-The `list-preset` change handler (panel.js:956) sets `list-query` to this marker. The `btn-list` click handler (panel.js:963) detects the marker; when present, it first calls `getInfinityFilterParams` to resolve both parameters, builds the real query, then runs the normal `listTickets` flow.
+The `list-preset` change handler (panel.js:1012) sets `list-query` to this marker. The `btn-list` click handler (panel.js:1019) detects the marker; when present, it first calls `getInfinityFilterParams` to resolve both parameters, builds the real query, then runs the normal `listTickets` flow.
 
 ### 2. Query construction
 
@@ -101,7 +103,7 @@ Condition-by-condition mapping to the screenshot filter:
 
 The assignment group is matched by **sys_id**, not by a dot-walk on the display name. The display label shown in the filter UI (`sys_user_group`'s name column) can differ from the `.name` a dot-walk would match on some instances; resolving the sys_id once (by name) and using `assignment_group=<sys_id>` removes that assumption entirely, consistent with the resolve-once-and-cache pattern already in the codebase. `assigned_toISEMPTY` is the standard ServiceNow encoded-query operator for an empty reference field.
 
-The list request asks for the same fields as the other presets (`number,short_description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci`) — Infinity alarms are ordinary incidents, so no new fields are needed for rendering. The table is `incident` (Infinity alarms are INCs).
+The list request asks for the same fields as the other presets (`number,short_description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci`) — Infinity alarms are ordinary incidents, so no new fields are needed for rendering. The table is `incident` (Infinity alarms are INCs). The v2.9 list handler also sends `includeCi: true`, so Infinity cards will automatically get Remote Access info (IP/SE ID/NAT IP/Connectivity + lazy device passwords) like every other preset — no extra work needed.
 
 ### 3. Filter parameter discovery — `background.js`
 
@@ -153,7 +155,7 @@ Each Infinity-preset ticket card renders a "Take" link in its action-links row, 
 
 Only shown when the Infinity preset is active (gated by a flag set during list rendering, so other presets' cards don't show Take). Styled like the existing links — reuse the `.add-note-link` / `.update-link` look (primary red, semibold, underline on hover).
 
-**Free win — alarm badge passthrough:** Infinity alarm INCs typically carry `contact_type=Alarm`. The existing rendering logic (panel.js:989–991) already shows a purple "Alarm" badge and the green "Close Alarm" action for those, so a Take'd Infinity alarm will display all three: Alarm badge, Take link, and (post-take or independently) Close Alarm. This is desired — Take claims ownership, Close Alarm remains available for the existing auto-close flow.
+**Free win — alarm badge passthrough:** Infinity alarm INCs typically carry `contact_type=Alarm`. The existing rendering logic (panel.js:1045–1047, badge; panel.js:1082, Close Alarm link) already shows a purple "Alarm" badge and the green "Close Alarm" action for those, so a Take'd Infinity alarm will display all three: Alarm badge, Take link, and (post-take or independently) Close Alarm. This is desired — Take claims ownership, Close Alarm remains available for the existing auto-close flow.
 
 #### Handler (delegated click, class-based — same pattern as the other inline actions)
 
@@ -216,18 +218,18 @@ Manual test plan (no automated test harness exists in this project):
 4. **Take "You" badge:** After Take, the card shows a "You" badge for Assigned to; a subsequent list refresh replaces it with the real name.
 5. **Take failure / retry:** Simulate by going offline mid-take → inline error appears, link restores, retry works when back online.
 6. **No results:** When no unassigned Infinity alarms exist → "No tickets found".
-7. **Alarm badge passthrough:** An Infinity alarm with `contact_type=Alarm` still shows the purple Alarm badge and the green Close Alarm action (existing logic at panel.js:989–991) — confirm it appears alongside the new Take link.
+7. **Alarm badge passthrough:** An Infinity alarm with `contact_type=Alarm` still shows the purple Alarm badge and the green Close Alarm action (existing logic at panel.js:1045–1047 / 1082) — confirm it appears alongside the new Take link.
 8. **Other presets unaffected:** "My Open Tickets" etc. still work; their cards show no Take link.
 
 ## Files Touched
 
 | File | Change |
 |------|--------|
-| `chrome-extension/manifest.json` | Bump version 2.8 → 2.9 |
+| `chrome-extension/manifest.json` | Bump version 2.9 → 2.10 |
 | `chrome-extension/panel.html` | Add `infinity-alarms` `<option>` to `#list-preset` |
 | `chrome-extension/panel.js` | `__INFINITY_ALARMS__` preset; `getInfinityFilterParams` call + query build in list handler; `.take-link` rendering (gated on Infinity preset); delegated `.take-link` click handler; "You" badge after Take |
 | `chrome-extension/background.js` | `getInfinityFilterParamsInPage()` page function (resolves Service Model column + assignment group sys_id in one round-trip); `getInfinityFilterParams` message routing + cache; `takeTicket` message handler |
-| `CHANGELOG.md` | Add `## [2.9]` section |
+| `CHANGELOG.md` | Add `## [2.10]` section above the existing `## [2.9]` entry |
 
 No changes to `content-snow.js`, `content-gct.js`, or `note-fields.js`.
 
