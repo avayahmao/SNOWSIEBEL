@@ -301,14 +301,32 @@ function getInfinityFilterParamsInPage() {
   // serializes both as result: undefined. So we catch internally and surface
   // failures as { _error: "..." } (same pattern as updateBySysIdInPage), and the
   // background handler checks params._error before dereferencing the fields.
-  var smPromise = snowFetch("GET", "/api/now/table/sys_dictionary?sysparm_query=name=incident^column_label=Service Model&sysparm_fields=element&sysparm_limit=1&sysparm_display_value=false")
+  //
+  // URL construction uses URLSearchParams (not string concatenation) because the
+  // query values contain spaces. The existing page functions that build raw query
+  // strings (getTicketInPage, getUserIdInPage) only use space-free values (ticket
+  // numbers, user_name). Space-containing values MUST be percent-encoded, or SNOW
+  // parses the unencoded space as a parameter delimiter and the query returns empty.
+  var smParams = new URLSearchParams({
+    sysparm_query: "name=incident^column_label=Service Model",
+    sysparm_fields: "element",
+    sysparm_limit: "1",
+    sysparm_display_value: "false"
+  });
+  var smPromise = snowFetch("GET", "/api/now/table/sys_dictionary?" + smParams)
     .then(function(d) {
       var rows = d.result || [];
       if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_dictionary had no match for column_label=Service Model). The Infinity Alarms filter cannot run.");
       var el = rows[0].element;
       return typeof el === "object" ? (el.value || el.display_value) : el;
     });
-  var agPromise = snowFetch("GET", "/api/now/table/sys_user_group?sysparm_query=name=Avaya Infinity Platform&sysparm_fields=sys_id&sysparm_limit=1&sysparm_display_value=false")
+  var agParams = new URLSearchParams({
+    sysparm_query: "name=Avaya Infinity Platform",
+    sysparm_fields: "sys_id",
+    sysparm_limit: "1",
+    sysparm_display_value: "false"
+  });
+  var agPromise = snowFetch("GET", "/api/now/table/sys_user_group?" + agParams)
     .then(function(d) {
       var rows = d.result || [];
       if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group (sys_user_group had no match for name=Avaya Infinity Platform). The Infinity Alarms filter cannot run.");
