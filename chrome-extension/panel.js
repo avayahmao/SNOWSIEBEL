@@ -1007,6 +1007,7 @@ const PRESETS = {
   "updated-today": "sys_updated_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_updated_on",
   "created-today": "sys_created_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_created_on",
   "awaiting": "state=4^assigned_to=javascript:gs.getUserID()",
+  "infinity-alarms": "__INFINITY_ALARMS__",
 };
 
 document.getElementById("list-preset").addEventListener("change", (e) => {
@@ -1018,8 +1019,21 @@ document.getElementById("list-preset").addEventListener("change", (e) => {
 
 document.getElementById("btn-list").addEventListener("click", async () => {
   const table = document.getElementById("list-table").value;
-  const query = document.getElementById("list-query").value.trim();
+  let query = document.getElementById("list-query").value.trim();
   const limit = parseInt(document.getElementById("list-limit").value) || 10;
+  // Infinity preset: resolve runtime params, build the real encoded query
+  let infinityMode = false;
+  if (query === "__INFINITY_ALARMS__") {
+    infinityMode = true;
+    showLoading(listResult);
+    try {
+      const params = await send({ action: "getInfinityFilterParams" });
+      query = "active=true^state=1^" + params.smField + "=Event Management^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
+    } catch (e) {
+      showError(listResult, e.message);
+      return;
+    }
+  }
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
@@ -1076,6 +1090,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
         }
       }
       html += `<div class="action-links-row">`;
+      if (infinityMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}">Take</a>`;
       html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
       html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
