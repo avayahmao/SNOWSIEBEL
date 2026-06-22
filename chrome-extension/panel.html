@@ -169,6 +169,10 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
 .add-note-link:hover, .update-link:hover { color: var(--primary-hover); text-decoration: underline; }
 .alarm-close-link { color: var(--success); cursor: pointer; font-weight: 600; font-size: var(--text-sm); transition: color var(--transition); }
 .alarm-close-link:hover { color: var(--success-hover); text-decoration: underline; }
+.take-link { color: var(--success); cursor: pointer; font-weight: 600; margin-right: 12px; font-size: var(--text-sm); transition: color var(--transition); }
+.take-link:hover { color: var(--success-hover); text-decoration: underline; }
+.take-link.disabled { color: var(--text-muted); cursor: default; pointer-events: none; }
+.take-you { color: var(--success); font-weight: 600; font-size: var(--text-sm); }
 
 /* ── Inline Forms ── */
 .inline-form {
@@ -436,6 +440,7 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
         <option value="my-updated">My Recently Updated</option>
         <option value="my-resolved">My Resolved (7 days)</option>
         <option value="awaiting">Awaiting User Info</option>
+        <option value="infinity-alarms">Infinity Alarms (Unassigned)</option>
       </select>
     </div>
     <div class="form-group">
