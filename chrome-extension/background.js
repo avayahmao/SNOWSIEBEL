@@ -721,6 +721,19 @@ async function handleMessage(msg) {
     return ticket;
   }
 
+  if (msg.action === "takeTicket") {
+    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    const userId = await injectAndExec(tab.id, getUserIdInPage, []);
+    if (!userId) throw new Error("Could not determine current user");
+    const result = await injectAndExec(tab.id, updateBySysIdInPage, [
+      table, sysId, { assigned_to: userId, state: "2" }
+    ]);
+    if (result && result._error) throw new Error(result._error);
+    return { success: true, assignedTo: userId };
+  }
+
   if (msg.action === "getNoteTypes") {
     return injectAndExec(tab.id, getNoteTypesInPage, []);
   }
