@@ -308,15 +308,15 @@ function getInfinityFilterParamsInPage() {
   // numbers, user_name). Space-containing values MUST be percent-encoded, or SNOW
   // parses the unencoded space as a parameter delimiter and the query returns empty.
   var smParams = new URLSearchParams({
-    sysparm_query: "name=incident^column_label=Service Model",
+    sysparm_query: "name=incident^label=Service Model",
     sysparm_fields: "element",
     sysparm_limit: "1",
     sysparm_display_value: "false"
   });
-  var smPromise = snowFetch("GET", "/api/now/table/sys_dictionary?" + smParams)
+  var smPromise = snowFetch("GET", "/api/now/table/sys_documentation?" + smParams)
     .then(function(d) {
       var rows = d.result || [];
-      if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_dictionary had no match for column_label=Service Model). The Infinity Alarms filter cannot run.");
+      if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_documentation had no match for label=Service Model). The Infinity Alarms filter cannot run.");
       var el = rows[0].element;
       return typeof el === "object" ? (el.value || el.display_value) : el;
     });
