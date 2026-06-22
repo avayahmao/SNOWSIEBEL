@@ -1088,7 +1088,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     showLoading(listResult);
     try {
       const params = await send({ action: "getInfinityFilterParams" });
-      query = "active=true^state=1^" + params.smField + "=Event Management^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
+      query = "active=true^state=1^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
     } catch (e) {
       showError(listResult, e.message);
       return;
