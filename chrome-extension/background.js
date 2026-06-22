@@ -295,23 +295,33 @@ function getUserIdInPage() {
 function getInfinityFilterParamsInPage() {
   // Resolve the Service Model column name (by label) and the assignment-group
   // sys_id (by name) in parallel, inside one page round-trip.
+  //
+  // IMPORTANT: chrome.scripting.executeScript cannot propagate a thrown error or a
+  // Promise rejection from an injected page function back to the caller — it
+  // serializes both as result: undefined. So we catch internally and surface
+  // failures as { _error: "..." } (same pattern as updateBySysIdInPage), and the
+  // background handler checks params._error before dereferencing the fields.
   var smPromise = snowFetch("GET", "/api/now/table/sys_dictionary?sysparm_query=name=incident^column_label=Service Model&sysparm_fields=element&sysparm_limit=1&sysparm_display_value=false")
     .then(function(d) {
       var rows = d.result || [];
-      if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_dictionary had no match). The Infinity Alarms filter cannot run.");
+      if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_dictionary had no match for column_label=Service Model). The Infinity Alarms filter cannot run.");
       var el = rows[0].element;
       return typeof el === "object" ? (el.value || el.display_value) : el;
     });
   var agPromise = snowFetch("GET", "/api/now/table/sys_user_group?sysparm_query=name=Avaya Infinity Platform&sysparm_fields=sys_id&sysparm_limit=1&sysparm_display_value=false")
     .then(function(d) {
       var rows = d.result || [];
-      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group. The Infinity Alarms filter cannot run.");
+      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group (sys_user_group had no match for name=Avaya Infinity Platform). The Infinity Alarms filter cannot run.");
       var id = rows[0].sys_id;
       return typeof id === "object" ? (id.value || id.display_value) : id;
     });
-  return Promise.all([smPromise, agPromise]).then(function(results) {
-    return { smField: results[0], agSysId: results[1] };
-  });
+  return Promise.all([smPromise, agPromise])
+    .then(function(results) {
+      return { smField: results[0], agSysId: results[1] };
+    })
+    .catch(function(e) {
+      return { _error: e && e.message ? e.message : String(e) };
+    });
 }
 
 // Directly update the incident/task's aggregate time_worked field
@@ -694,6 +704,12 @@ async function handleMessage(msg) {
     }
     const tab = await findSnowTab();
     const params = await injectAndExec(tab.id, getInfinityFilterParamsInPage, []);
+    // The page function catches internally and returns { _error } on failure —
+    // executeScript swallows thrown errors/rejections, so we can't rely on a throw
+    // propagating. Surface the error here so the panel shows the real reason.
+    if (!params || params._error) {
+      throw new Error(params && params._error ? params._error : "Infinity filter parameter discovery failed (the page function returned no result).");
+    }
     cachedServiceModelField = params.smField;
     cachedAssignmentGroupSysId = params.agSysId;
     return params;
