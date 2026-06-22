@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.10] - 2026-06-21
+
+### Added
+- **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group with Service Model = Event Management. Reproduces the standard Infinity alarm triage filter in one click. Each card also shows the v2.9 Remote Access / Details info like every other preset.
+- **Take action on Infinity alarm cards** — Each Infinity-preset ticket card has a "Take" link that assigns the incident to you and moves it to In Progress (state 2). Shows a "✓ Taken" state and a "You" assignee badge on success; next list refresh restores the real name.
+- `getInfinityFilterParams` message action in background.js — resolves the Service Model column name (via `sys_dictionary`) and the assignment-group sys_id (via `sys_user_group`) in a single page round-trip, cached for the session. Avoids hardcoding internal field names and the display-name dot-walk fragility.
+- `takeTicket` message action in background.js — assigns an incident to the current user and sets state to In Progress.
+
 ## [2.9] - 2026-06-10
 
 ### Added
