@@ -1065,12 +1065,18 @@ const PRESETS = {
   "created-today": "sys_created_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_created_on",
   "awaiting": "state=4^assigned_to=javascript:gs.getUserID()",
   // Infinity Alarms (Unassigned) — active, New, Avaya Infinity Platform group, unassigned.
-  // Uses a dot-walk on assignment_group.name rather than resolving the group sys_id.
-  // Reason: querying by assignment_group=<sys_id> hits an ACL on this instance that
-  // EXCLUDES unassigned incidents from the result set (verified empirically — sys_id
-  // query returns 4 assigned incidents; the same dot-walk query returns 5, including
-  // the unassigned one). The dot-walk bypasses that ACL.
-  "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY",
+  //
+  // Two non-obvious encodings, both forced by this instance's ACLs/config:
+  //  1. assignment_group.name=<display>  (dot-walk, NOT assignment_group=<sys_id>)
+  //     The sys_id form hits an ACL that silently excludes unassigned incidents
+  //     from the result set. Verified empirically: sys_id returns 4 (all assigned),
+  //     dot-walk returns 5 (including the unassigned one).
+  //  2. trailing ^EQ  — this instance silently drops the ISEMPTY condition unless
+  //     the query ends with a bare ^EQ terminator. This matches SNOW's own built-in
+  //     "Open - Unassigned" module (module bf2c0383c0a801640128cbe631d11c4b),
+  //     whose encoded query is `active=true^assigned_toISEMPTY^EQ`. Without ^EQ,
+  //     the query returns 0 even though unassigned tickets provably exist.
+  "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ",
 };
 
 document.getElementById("list-preset").addEventListener("change", (e) => {
