@@ -31,14 +31,15 @@ Add the ability to, from the extension's List tab:
 | Take action semantics | Assign to me + State → In Progress (state 2) | Signals work has started; matches user's workflow |
 | Workflow shape | Fetch list, then per-ticket Take | Review before mutating; most control |
 | UI placement | List tab preset dropdown option | Reuses existing rendering + inline actions; fits mental model |
-| Service Model field name + assignment group | ~~Runtime discovery via `sys_dictionary` + `sys_user_group`~~ → **Service Model dropped** (ACL-blocked); assignment group resolved via `sys_user_group` and cached | Target instance's ACLs deny reads on `sys_dictionary`/`sys_documentation`, making label-based field discovery impossible. Service Model condition removed entirely; assignment group still resolved by sys_id to avoid the dot-walk display-name fragility |
+| Service Model condition | **Dropped** | Instance ACLs deny reads on `sys_dictionary`/`sys_documentation`, making label-based field discovery impossible. The internal field name couldn't be confirmed either, so the condition was removed entirely. Result set is broader; Event Management incidents are identified by eye. |
+| Assignment group match | **Dot-walk on `assignment_group.name`** (static query string, like every other preset) | The spec-review P2 "harden with sys_id" was inverted by empirical testing: querying `assignment_group=<sys_id>` hits an ACL on this instance that **excludes unassigned incidents** from the result set (verified — sys_id query returns 4 assigned incidents; dot-walk returns 5 including the unassigned one). The dot-walk bypasses that ACL. See §2. |
 | Assignee display after Take | Literal "You" badge, no extra fetch | sys_id ≠ display name; next list refresh restores the real name |
 
 ## Architecture
 
 The feature reuses the extension's established three-layer flow: `panel.js` (UI) → `background.js` (orchestration) → injected `snowFetch()` in the ServiceNow page's MAIN world.
 
-Two new message actions are added to `background.js`; no changes to `content-snow.js` or `note-fields.js`.
+One new message action is added to `background.js` (`takeTicket`); the Infinity preset itself is a plain static query string in `panel.js` (like every other preset), requiring no background-side discovery. No changes to `content-snow.js` or `note-fields.js`.
 
 ```
 panel.js                      background.js                  SNOW page (MAIN world)
@@ -46,13 +47,9 @@ panel.js                      background.js                  SNOW page (MAIN wor
 select "Infinity Alarms"
 preset, click Search
         │
-        ├── getInfinityFilterParams ──► getInfinityFilterParamsInPage ──► snowFetch(sys_user_group)
-        │   (cached after first call)
-        ◄──────────── { agSysId } ────────────┘
-        │
-        ├── listTickets (query with ──► listTicketsInPage ──► snowFetch(/api/now/table/incident)
-        │   resolved ag sys_id)                 │
-        ◄──────────────── tickets ────────────────┘
+        ├── listTickets (static ──► listTicketsInPage ──► snowFetch(/api/now/table/incident)
+        │   dot-walk query)                  │
+        ◄──────────────── tickets ────────────┘
         │
         │   render cards, each with "Take" link
         │
@@ -74,20 +71,20 @@ click "Take" on a card
 
 Add a `<option value="infinity-alarms">Infinity Alarms (Unassigned)</option>` to the `#list-preset` `<select>` in `panel.html`.
 
-Add a `PRESETS` entry in `panel.js`. Because the assignment-group sys_id is only known at runtime, the preset value is a **template marker** (not a usable query string):
+Add a `PRESETS` entry in `panel.js`. It's a plain static encoded query string, exactly like the other presets (`awaiting`, `all-open`, etc.) — no marker, no discovery, no special handling:
 
 ```js
-"infinity-alarms": "__INFINITY_ALARMS__"
+"infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY"
 ```
 
-The `list-preset` change handler (panel.js:1012) sets `list-query` to this marker. The `btn-list` click handler (panel.js:1019) detects the marker; when present, it first calls `getInfinityFilterParams` to resolve the group sys_id, builds the real query, then runs the normal `listTickets` flow.
+The `infinityMode` flag (gates the Take link on Infinity cards) is set from the dropdown value (`list-preset.value === "infinity-alarms"`), not from any query-string inspection.
 
 ### 2. Query construction
 
-The query template (substituting `{ag}` with the resolved assignment-group sys_id):
+The static encoded query:
 
 ```
-active=true^state=1^assignment_group={ag}^assigned_toISEMPTY
+active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY
 ```
 
 Condition-by-condition mapping to the screenshot filter:
@@ -96,42 +93,24 @@ Condition-by-condition mapping to the screenshot filter:
 |----------------------|------------------------|
 | Active is true | `active=true` |
 | State is New | `state=1` (incident New = code 1) |
-| ~~Service Model is Event Management~~ | **Dropped** — see "Service Model condition" note below |
-| Assignment group is Avaya Infinity Platform | `assignment_group={ag}` (sys_id, resolved once — see §3) |
+| ~~Service Model is Event Management~~ | **Dropped** — see note below |
+| Assignment group is Avaya Infinity Platform | `assignment_group.name=Avaya Infinity Platform` (dot-walk — see note below) |
 | Assigned to is (empty) | `assigned_toISEMPTY` |
 
-**Service Model condition — dropped (design revision):** The original design resolved the internal column name for "Service Model" at runtime via `sys_dictionary`/`sys_documentation`. This was abandoned during implementation because the target ServiceNow instance's ACLs **deny `query_match` / `query_range` on `sys_dictionary`** (and the same on `sys_documentation`), so any label-based lookup returns empty regardless of the query. Hardcoding the field name was also rejected because the internal name couldn't be confirmed. The filter therefore drops the Service Model condition entirely (Approach C from the original brainstorm): the result set is broader (any Service Model in the Avaya Infinity Platform group, not just Event Management), and Event Management incidents are identified by eye. This is the only deviation from the original 5-condition screenshot filter.
+**Service Model condition — dropped:** The original design resolved the internal column name at runtime via `sys_dictionary`/`sys_documentation`. Abandoned because the target instance's ACLs **deny `query_match` / `query_range` on those tables**, so any label-based lookup returns empty regardless of the query. Hardcoding was also rejected because the internal name couldn't be confirmed. The condition is removed entirely — broader result set, triaged by eye.
 
-The assignment group is matched by **sys_id**, not by a dot-walk on the display name. The display label shown in the filter UI (`sys_user_group`'s name column) can differ from the `.name` a dot-walk would match on some instances; resolving the sys_id once (by name) and using `assignment_group=<sys_id>` removes that assumption entirely, consistent with the resolve-once-and-cache pattern already in the codebase. `assigned_toISEMPTY` is the standard ServiceNow encoded-query operator for an empty reference field.
+**Assignment group — dot-walk, NOT sys_id (design revision):** An earlier spec review "hardened" this to `assignment_group=<sys_id>` (resolved once via `sys_user_group`). Empirical testing proved that inverted: on this instance, querying by `assignment_group=<sys_id>` hits an ACL that **excludes unassigned incidents** from the result set, while the dot-walk `assignment_group.name=...` bypasses that ACL and returns the expected rows including the unassigned one. Verified with side-by-side queries against the same group:
+
+| Query form | Returned count | Includes unassigned? |
+|---|---|---|
+| `assignment_group=884450191b8cf6901727ca2f034bcb0b` | 4 | No (all assigned) |
+| `assignment_group.name=Avaya Infinity Platform` | 5 | Yes |
+
+The dot-walk is therefore not a fragility to harden away — it's the **only** form that works correctly on this instance. The earlier resolve-sys_id-and-cache mechanism (`getInfinityFilterParams`, `getInfinityFilterParamsInPage`, `cachedAssignmentGroupSysId`) was removed entirely.
 
 The list request asks for the same fields as the other presets (`number,short_description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci`) — Infinity alarms are ordinary incidents, so no new fields are needed for rendering. The table is `incident` (Infinity alarms are INCs). The v2.9 list handler also sends `includeCi: true`, so Infinity cards will automatically get Remote Access info (IP/SE ID/NAT IP/Connectivity + lazy device passwords) like every other preset — no extra work needed.
 
-### 3. Filter parameter discovery — `background.js`
-
-New message action `getInfinityFilterParams`. Resolves the assignment-group sys_id at runtime. Implemented as a page function `getInfinityFilterParamsInPage()` and routed through `injectAndExec`, mirroring the existing `getNoteTypes` / `getTicket` pattern.
-
-The page function resolves the group and returns `{ agSysId }`:
-
-**Assignment group sys_id** — resolve the group named "Avaya Infinity Platform":
-
-```
-GET /api/now/table/sys_user_group
-  ?sysparm_query=name=Avaya Infinity Platform
-  &sysparm_fields=sys_id
-  &sysparm_limit=1
-  &sysparm_display_value=false
-```
-
-- Returns the group's sys_id, used directly in `assignment_group={ag}`.
-- The URL is built with `URLSearchParams` (not string concatenation) because the group name contains spaces — an unencoded space is parsed by SNOW as a parameter delimiter, returning empty results.
-
-**Caching:** the background service worker caches the result in a module-level variable (`cachedAssignmentGroupSysId`) for the session. The panel does not cache; it asks background each time (background is the single source of truth and survives panel reopens).
-
-**Error propagation:** `chrome.scripting.executeScript` cannot propagate a thrown error or Promise rejection from an injected page function back to the caller — it serializes both as `result: undefined`. The page function therefore catches internally and returns `{ _error: "..." }` on failure (same pattern as `updateBySysIdInPage`). The background handler checks `params._error` and throws the real message, so the panel's `catch` shows the actual cause instead of a null deref.
-
-**Fallback:** if the query returns no rows or errors, `getInfinityFilterParams` throws with a message identifying the failure. The panel catches this, shows a clear error in the list results area ("Could not locate the 'Avaya Infinity Platform' assignment group..."), and does **not** run a broken query.
-
-### 4. Per-ticket Take action — `panel.js` + `background.js`
+### 3. Per-ticket Take action — `panel.js` + `background.js`
 
 #### UI
 
@@ -179,12 +158,10 @@ Reuses the existing `getTicketInPage`, `getUserIdInPage`, and `updateBySysIdInPa
 
 1. User opens extension (List tab default).
 2. User picks "Infinity Alarms (Unassigned)" from the Filter dropdown and clicks Search.
-3. `panel.js` sees the `__INFINITY_ALARMS__` marker → calls `getInfinityFilterParams`.
-4. `background.js` returns the cached or freshly-resolved `{ agSysId }`.
-5. `panel.js` builds the encoded query, calls `listTickets` (existing path).
-6. Tickets render as normal cards, each with an extra "Take" link (Infinity flag = true).
-7. User clicks Take on a card → `takeTicket` → incident assigned to them + In Progress.
-8. Card UI updates: state badge → In Progress, a "You" badge shows next to Assigned to.
+3. `panel.js` sets `infinityMode = true` (from the dropdown value) and calls `listTickets` with the static dot-walk encoded query (existing path — no special handling needed).
+4. Tickets render as normal cards, each with an extra "Take" link (because `infinityMode` is true).
+5. User clicks Take on a card → `takeTicket` → incident assigned to them + In Progress.
+6. Card UI updates: state badge → In Progress, a "You" badge shows next to Assigned to.
 
 ## Error Handling
 
@@ -200,14 +177,13 @@ Reuses the existing `getTicketInPage`, `getUserIdInPage`, and `updateBySysIdInPa
 
 Manual test plan (no automated test harness exists in this project):
 
-1. **Discovery:** Select Infinity preset → confirm the assignment-group sys_id resolves. Selecting again should use the cache (no second `sys_user_group` call).
-2. **Filter correctness:** Confirm the returned incidents match all 5 conditions (spot-check a couple in SNOW UI). Pay particular attention to the assignment group — the list must contain only incidents in "Avaya Infinity Platform", confirming the sys_id resolution matched the intended group.
-3. **Take success:** Click Take → incident's Assigned to becomes the logged-in user, State becomes In Progress. Verify in SNOW.
-4. **Take "You" badge:** After Take, the card shows a "You" badge for Assigned to; a subsequent list refresh replaces it with the real name.
-5. **Take failure / retry:** Simulate by going offline mid-take → inline error appears, link restores, retry works when back online.
-6. **No results:** When no unassigned Infinity alarms exist → "No tickets found".
-7. **Alarm badge passthrough:** An Infinity alarm with `contact_type=Alarm` still shows the purple Alarm badge and the green Close Alarm action (existing logic at panel.js:1045–1047 / 1082) — confirm it appears alongside the new Take link.
-8. **Other presets unaffected:** "My Open Tickets" etc. still work; their cards show no Take link.
+1. **Filter correctness:** Select Infinity preset → list should render unassigned New incidents in the Avaya Infinity Platform group. Confirm the dot-walk form (not sys_id) is in effect — the list MUST include unassigned incidents (the sys_id form empirically excludes them via ACL).
+2. **Take success:** Click Take → incident's Assigned to becomes the logged-in user, State becomes In Progress. Verify in SNOW.
+3. **Take "You" badge:** After Take, the card shows a "You" badge for Assigned to; a subsequent list refresh replaces it with the real name.
+4. **Take failure / retry:** Simulate by going offline mid-take → inline error appears, link restores, retry works when back online.
+5. **No results:** When no unassigned Infinity alarms exist → "No tickets found".
+6. **Alarm badge passthrough:** An Infinity alarm with `contact_type=Alarm` still shows the purple Alarm badge and the green Close Alarm action (existing logic at panel.js:1045–1047 / 1082) — confirm it appears alongside the new Take link.
+7. **Other presets unaffected:** "My Open Tickets" etc. still work; their cards show no Take link.
 
 ## Files Touched
 
@@ -215,8 +191,8 @@ Manual test plan (no automated test harness exists in this project):
 |------|--------|
 | `chrome-extension/manifest.json` | Bump version 2.9 → 2.10 |
 | `chrome-extension/panel.html` | Add `infinity-alarms` `<option>` to `#list-preset` |
-| `chrome-extension/panel.js` | `__INFINITY_ALARMS__` preset; `getInfinityFilterParams` call + query build in list handler; `.take-link` rendering (gated on Infinity preset); delegated `.take-link` click handler; "You" badge after Take |
-| `chrome-extension/background.js` | `getInfinityFilterParamsInPage()` page function (resolves assignment group sys_id); `getInfinityFilterParams` message routing + cache; `takeTicket` message handler |
+| `chrome-extension/panel.js` | Static dot-walk `infinity-alarms` preset entry; `infinityMode` flag (dropdown-based); `.take-link` rendering; delegated `.take-link` click handler; "You" badge after Take |
+| `chrome-extension/background.js` | `takeTicket` message handler only (no Infinity discovery — the preset is a static query) |
 | `CHANGELOG.md` | Add `## [2.10]` section above the existing `## [2.9]` entry |
 
 No changes to `content-snow.js`, `content-gct.js`, or `note-fields.js`.
