@@ -18,6 +18,11 @@ const OCD_AUTH = {
   auth_key:  _dec([92,6,6,106,4,71,90,102,21,10,89,86,0,57,89,69,93,61,67,6,13,91,6,60,7,18,80,102,66,0,93,86])
 };
 
+// Infinity Alarms filter — resolved once per session, cached for subsequent runs.
+// Set by getInfinityFilterParams; cleared only when the service worker is torn down.
+var cachedServiceModelField = null;
+var cachedAssignmentGroupSysId = null;
+
 // Open sidebar when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
@@ -285,6 +290,28 @@ function getUserIdInPage() {
   return snowFetch("GET", "/api/now/table/sys_user?sysparm_query=user_name=javascript:gs.getUserName()&sysparm_limit=1&sysparm_fields=sys_id")
     .then(function(d) { return d.result && d.result[0] ? d.result[0].sys_id : ""; })
     .catch(function() { return ""; });
+}
+
+function getInfinityFilterParamsInPage() {
+  // Resolve the Service Model column name (by label) and the assignment-group
+  // sys_id (by name) in parallel, inside one page round-trip.
+  var smPromise = snowFetch("GET", "/api/now/table/sys_dictionary?sysparm_query=name=incident^column_label=Service Model&sysparm_fields=element&sysparm_limit=1&sysparm_display_value=false")
+    .then(function(d) {
+      var rows = d.result || [];
+      if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_dictionary had no match). The Infinity Alarms filter cannot run.");
+      var el = rows[0].element;
+      return typeof el === "object" ? (el.value || el.display_value) : el;
+    });
+  var agPromise = snowFetch("GET", "/api/now/table/sys_user_group?sysparm_query=name=Avaya Infinity Platform&sysparm_fields=sys_id&sysparm_limit=1&sysparm_display_value=false")
+    .then(function(d) {
+      var rows = d.result || [];
+      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group. The Infinity Alarms filter cannot run.");
+      var id = rows[0].sys_id;
+      return typeof id === "object" ? (id.value || id.display_value) : id;
+    });
+  return Promise.all([smPromise, agPromise]).then(function(results) {
+    return { smField: results[0], agSysId: results[1] };
+  });
 }
 
 // Directly update the incident/task's aggregate time_worked field
@@ -658,6 +685,18 @@ async function handleMessage(msg) {
     }
 
     return { success: true, steps };
+  }
+
+  if (msg.action === "getInfinityFilterParams") {
+    // Serve from cache if already resolved this session
+    if (cachedServiceModelField && cachedAssignmentGroupSysId) {
+      return { smField: cachedServiceModelField, agSysId: cachedAssignmentGroupSysId };
+    }
+    const tab = await findSnowTab();
+    const params = await injectAndExec(tab.id, getInfinityFilterParamsInPage, []);
+    cachedServiceModelField = params.smField;
+    cachedAssignmentGroupSysId = params.agSysId;
+    return params;
   }
 
   // All other actions require a ServiceNow tab
