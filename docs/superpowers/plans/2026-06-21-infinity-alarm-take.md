@@ -4,7 +4,7 @@
 
 **Goal:** Add a "Infinity Alarms (Unassigned)" List preset that fetches new unassigned Avaya Infinity Platform alarm incidents, with a per-ticket "Take" action that assigns each to the current user and moves it to In Progress.
 
-**Architecture:** Three new pieces ride on the existing panel→background→page(snowFetch) flow: (1) a `getInfinityFilterParams` message that resolves the Service Model column name and the assignment-group sys_id in one page round-trip and caches both in the service worker; (2) a `takeTicket` message that PATCHes `assigned_to` + `state=2`; (3) panel-side preset + Take-link wiring. No new content scripts.
+**Architecture:** Three new pieces ride on the existing panel→background→page(snowFetch) flow: (1) a `getInfinityFilterParams` message that resolves the assignment-group sys_id and caches it in the service worker; (2) a `takeTicket` message that PATCHes `assigned_to` + `state=2`; (3) panel-side preset + Take-link wiring. No new content scripts.
 
 **Tech Stack:** Chrome Extension Manifest V3, ServiceNow REST Table API (`/api/now/table/`), `snowFetch()` injected into the SNOW page's MAIN world. Vanilla JS (no build step, no external deps).
 
@@ -54,9 +54,9 @@ In `CHANGELOG.md`, insert a new section directly under the `# Changelog` header 
 ## [2.10] - 2026-06-21
 
 ### Added
-- **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group with Service Model = Event Management. Reproduces the standard Infinity alarm triage filter in one click. Each card also shows the v2.9 Remote Access / Details info like every other preset.
+- **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group. (Service Model = Event Management condition was dropped during implementation — the instance's ACLs block the sys_dictionary/sys_documentation reads needed to resolve the field name at runtime. Result set is broader; Event Management incidents are identified by eye.) Each card also shows the v2.9 Remote Access / Details info like every other preset.
 - **Take action on Infinity alarm cards** — Each Infinity-preset ticket card has a "Take" link that assigns the incident to you and moves it to In Progress (state 2). Shows a "✓ Taken" state and a "You" assignee badge on success; next list refresh restores the real name.
-- `getInfinityFilterParams` message action in background.js — resolves the Service Model column name (via `sys_dictionary`) and the assignment-group sys_id (via `sys_user_group`) in a single page round-trip, cached for the session. Avoids hardcoding internal field names and the display-name dot-walk fragility.
+- `getInfinityFilterParams` message action in background.js — resolves the assignment-group sys_id (via `sys_user_group`) and caches it for the session. Avoids the display-name dot-walk fragility.
 - `takeTicket` message action in background.js — assigns an incident to the current user and sets state to In Progress.
 ```
 
@@ -121,42 +121,52 @@ git commit -m "feat: add Infinity Alarms option + Take-link CSS to List UI"
 **Files:**
 - Modify: `chrome-extension/background.js` (add cache vars after the `OCD_AUTH` block; add page function after `getUserIdInPage`; add message routing before the shared `findSnowTab` line)
 
-- [ ] **Step 1: Add the cache variables**
+- [ ] **Step 1: Add the cache variable**
 
-Near the top of `chrome-extension/background.js`, just **after** the `OCD_AUTH` const block (after line 19), add two module-level cache variables:
+Near the top of `chrome-extension/background.js`, just **after** the `OCD_AUTH` const block (after line 19), add one module-level cache variable:
 
 ```js
-// Infinity Alarms filter — resolved once per session, cached for subsequent runs.
-// Set by getInfinityFilterParams; cleared only when the service worker is torn down.
-var cachedServiceModelField = null;
+// Infinity Alarms filter — the assignment-group sys_id is resolved once per
+// session and cached. Cleared only when the service worker is torn down.
 var cachedAssignmentGroupSysId = null;
 ```
 
 - [ ] **Step 2: Add the page function**
 
-In `chrome-extension/background.js`, add this new page function **immediately after** the existing `getUserIdInPage` function (closing brace at line 288; insert at the blank line 289). It runs both queries via `Promise.all` inside a single `injectAndExec` call so it costs one message, not two:
+In `chrome-extension/background.js`, add this new page function **immediately after** the existing `getUserIdInPage` function (closing brace at line 288; insert at the blank line 289). It resolves the assignment-group sys_id by name. (The original design also resolved the Service Model column name, but that was dropped — see spec §2 "Service Model condition — dropped".)
 
 ```js
 function getInfinityFilterParamsInPage() {
-  // Resolve the Service Model column name (by label) and the assignment-group
-  // sys_id (by name) in parallel, inside one page round-trip.
-  var smPromise = snowFetch("GET", "/api/now/table/sys_dictionary?sysparm_query=name=incident^column_label=Service Model&sysparm_fields=element&sysparm_limit=1&sysparm_display_value=false")
-    .then(function(d) {
-      var rows = d.result || [];
-      if (!rows.length) throw new Error("Could not locate a 'Service Model' column on the incident table (sys_dictionary had no match). The Infinity Alarms filter cannot run.");
-      var el = rows[0].element;
-      return typeof el === "object" ? (el.value || el.display_value) : el;
-    });
-  var agPromise = snowFetch("GET", "/api/now/table/sys_user_group?sysparm_query=name=Avaya Infinity Platform&sysparm_fields=sys_id&sysparm_limit=1&sysparm_display_value=false")
-    .then(function(d) {
-      var rows = d.result || [];
-      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group. The Infinity Alarms filter cannot run.");
-      var id = rows[0].sys_id;
-      return typeof id === "object" ? (id.value || id.display_value) : id;
-    });
-  return Promise.all([smPromise, agPromise]).then(function(results) {
-    return { smField: results[0], agSysId: results[1] };
+  // Resolve the assignment-group sys_id (by name) for the Infinity Alarms preset.
+  //
+  // The original design also resolved the 'Service Model' column name at runtime
+  // via sys_dictionary / sys_documentation. That was abandoned because the target
+  // instance's ACLs block reads on those tables (query_match / query_range denied).
+  // The filter now drops the Service Model condition entirely.
+  //
+  // chrome.scripting.executeScript cannot propagate a thrown error or Promise
+  // rejection from an injected page function — it serializes both as undefined.
+  // So we catch internally and return { _error } on failure (same pattern as
+  // updateBySysIdInPage).
+  //
+  // URL is built with URLSearchParams because the group name contains spaces.
+  var agParams = new URLSearchParams({
+    sysparm_query: "name=Avaya Infinity Platform",
+    sysparm_fields: "sys_id",
+    sysparm_limit: "1",
+    sysparm_display_value: "false"
   });
+  return snowFetch("GET", "/api/now/table/sys_user_group?" + agParams)
+    .then(function(d) {
+      var rows = d.result || [];
+      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group (sys_user_group had no match for name=Avaya Infinity Platform). The Infinity Alarms filter cannot run.");
+      var id = rows[0].sys_id;
+      var agSysId = typeof id === "object" ? (id.value || id.display_value) : id;
+      return { agSysId: agSysId };
+    })
+    .catch(function(e) {
+      return { _error: e && e.message ? e.message : String(e) };
+    });
 }
 ```
 
@@ -167,12 +177,17 @@ In `chrome-extension/background.js`, inside `handleMessage` (the `async function
 ```js
   if (msg.action === "getInfinityFilterParams") {
     // Serve from cache if already resolved this session
-    if (cachedServiceModelField && cachedAssignmentGroupSysId) {
-      return { smField: cachedServiceModelField, agSysId: cachedAssignmentGroupSysId };
+    if (cachedAssignmentGroupSysId) {
+      return { agSysId: cachedAssignmentGroupSysId };
     }
     const tab = await findSnowTab();
     const params = await injectAndExec(tab.id, getInfinityFilterParamsInPage, []);
-    cachedServiceModelField = params.smField;
+    // The page function catches internally and returns { _error } on failure —
+    // executeScript swallows thrown errors/rejections, so we can't rely on a throw
+    // propagating. Surface the error here so the panel shows the real reason.
+    if (!params || params._error) {
+      throw new Error(params && params._error ? params._error : "Infinity filter parameter discovery failed (the page function returned no result).");
+    }
     cachedAssignmentGroupSysId = params.agSysId;
     return params;
   }
@@ -186,14 +201,14 @@ Reload the extension. In the sidebar's DevTools console (right-click sidebar →
 chrome.runtime.sendMessage({ action: "getInfinityFilterParams" }, (r) => console.log(r));
 ```
 
-Expected (logged in to SNOW): `{ ok: true, data: { smField: "<some_column>", agSysId: "<32-char sys_id>" } }`.
+Expected (logged in to SNOW): `{ ok: true, data: { agSysId: "<32-char sys_id>" } }`.
 Expected (not logged in): `{ ok: false, error: "Please open a ServiceNow tab and log in first" }`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add chrome-extension/background.js
-git commit -m "feat: resolve Infinity filter params (Service Model field + assignment group sys_id)"
+git commit -m "feat: resolve Infinity filter assignment-group sys_id"
 ```
 
 ---
@@ -288,7 +303,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     showLoading(listResult);
     try {
       const params = await send({ action: "getInfinityFilterParams" });
-      query = "active=true^state=1^" + params.smField + "=Event Management^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
+      query = "active=true^state=1^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
     } catch (e) {
       showError(listResult, e.message);
       return;
@@ -303,7 +318,7 @@ Leave the rest of the handler body untouched for now — Task 6 will add the `in
 
 Reload the extension. Select "Infinity Alarms (Unassigned)" in the Filter dropdown, click Search. Expected: list of incidents renders (or "No tickets found" if none match) — cards will show the v2.9 Remote Access / Details sections too. Confirm in SNOW that the returned incidents all satisfy the 5 filter conditions.
 
-If you see "Could not locate a 'Service Model' column..." or "Could not locate the 'Avaya Infinity Platform' assignment group...", the discovery queries need adjusting for this instance — check the exact `column_label` in `sys_dictionary` and the exact group `name` in `sys_user_group`.
+If you see "Could not locate the 'Avaya Infinity Platform' assignment group...", the group-name discovery query needs adjusting for this instance — check the exact group `name` in `sys_user_group`.
 
 - [ ] **Step 4: Commit**
 
@@ -462,7 +477,7 @@ Select Infinity preset, Search. Confirm both params resolved (list loads). Selec
 
 - [ ] **Step 2: Filter correctness**
 
-Spot-check 2-3 returned incidents in SNOW: all must be Active, State=New, Service Model=Event Management, Assignment group=Avaya Infinity Platform, Assigned to=empty.
+Spot-check 2-3 returned incidents in SNOW: all must be Active, State=New, Assignment group=Avaya Infinity Platform, Assigned to=empty. (Service Model is intentionally not filtered — any Service Model in that group may appear; Event Management ones are the target but Break/Fix etc. may also show up. Triage by eye.)
 
 - [ ] **Step 3: Take success + You badge**
 
@@ -498,5 +513,5 @@ Run after writing, results recorded here:
 
 - **Spec coverage:** All spec components map to tasks — preset (T2, T5), query construction (T5), filter param discovery incl. caching + fallback (T3), take action UI + handler incl. You badge (T6, T7), takeTicket handler (T4), error handling (T3/T4/T7), testing (T8), files touched incl. CHANGELOG (T1). ✓
 - **Placeholder scan:** No TBD/TODO; every code step shows full code. ✓
-- **Type/name consistency:** `getInfinityFilterParams` / `getInfinityFilterParamsInPage` / `cachedServiceModelField` / `cachedAssignmentGroupSysId` / `takeTicket` / `infinityMode` / `.take-link` / `.take-you` used consistently across tasks. Message payload shapes (`{ smField, agSysId }`, `{ success, assignedTo }`) match between background and panel. ✓
+- **Type/name consistency:** `getInfinityFilterParams` / `getInfinityFilterParamsInPage` / `cachedAssignmentGroupSysId` / `takeTicket` / `infinityMode` / `.take-link` / `.take-you` used consistently across tasks. Message payload shapes (`{ agSysId }`, `{ success, assignedTo }`) match between background and panel. ✓
 - **Rebase verification:** Version bumped to 2.10 (not 2.9). CHANGELOG entry placed above existing `## [2.9]`. All line numbers re-checked against post-rebase codebase: PRESETS at 1000, awaiting line at 1009, btn-list handler at 1019, card action-links at 1078–1083, delegated click listener at 423, handleMessage at 532, `// All other actions` comment at 663, shared `findSnowTab`/`detectTable` at 664–665, `getTicket` block return at 682, `getUserIdInPage` ends at 288 (insertion after blank line 289). ✓
