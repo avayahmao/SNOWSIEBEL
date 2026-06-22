@@ -3,10 +3,13 @@
 ## [2.10] - 2026-06-22
 
 ### Added
-- **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group with Service Model = Event Management. Reproduces the standard Infinity alarm triage filter in one click. Each card also shows the v2.9 Remote Access / Details info like every other preset.
+- **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group. One-click triage queue for Infinity alarm intake; each card shows the v2.9 Remote Access / Details info like every other preset.
+- **My Open Alarms preset** — New List tab filter (under "My Open Tickets") showing all active incidents assigned to you with `contact_type = Alarm`. Quick view of the alarms you're currently responsible for.
 - **Take action on Infinity alarm cards** — Each Infinity-preset ticket card has a "Take" link that assigns the incident to you and moves it to In Progress (state 2). Shows a "✓ Taken" state and a "You" assignee badge on success; next list refresh restores the real name.
-- `getInfinityFilterParams` message action in background.js — resolves the Service Model column name (via `sys_dictionary`) and the assignment-group sys_id (via `sys_user_group`) in a single page round-trip, cached for the session. Avoids hardcoding internal field names and the display-name dot-walk fragility.
 - `takeTicket` message action in background.js — assigns an incident to the current user and sets state to In Progress.
+
+### Notes
+- The Infinity preset's filter differs from the original 5-condition screenshot in two ways, both forced by this ServiceNow instance's configuration: (1) the "Service Model = Event Management" condition is dropped — the instance's ACLs deny reads on `sys_dictionary`/`sys_documentation`, making label-based field discovery impossible; (2) the assignment group is matched by dot-walk (`assignment_group.name=...`) rather than sys_id, because the sys_id form hits an ACL that silently excludes unassigned incidents. The `assigned_toISEMPTY` condition requires a trailing `^EQ` terminator on this instance, matching SNOW's own built-in "Open - Unassigned" module.
 
 ## [2.9] - 2026-06-10
 

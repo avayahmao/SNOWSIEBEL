@@ -1056,6 +1056,7 @@ let listAutoLoaded = false;
 
 const PRESETS = {
   "my-open": "active=true^assigned_to=javascript:gs.getUserID()",
+  "my-open-alarms": "active=true^assigned_to=javascript:gs.getUserID()^contact_type=Alarm",
   "my-updated": "assigned_to=javascript:gs.getUserID()^ORDERBYsys_updated_on",
   "my-resolved": "assigned_to=javascript:gs.getUserID()^state=7^resolved_onONLast 7 days@javascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0)",
   "group-open": "active=true^assignment_group=javascript:gs.getUser().getMyGroups()",
