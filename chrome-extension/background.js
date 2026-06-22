@@ -257,7 +257,13 @@ function getTicketInPage(table, ticketNumber) {
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
 params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci");
-  return snowFetch("GET", "/api/now/table/" + table + "?" + params)
+  // URLSearchParams encodes spaces as '+' (form-encoding), but ServiceNow's
+  // sysparm_query parser expects '%20'. A literal '+' in a query value (e.g. the
+  // group name "Avaya Infinity Platform" in the Infinity preset) is not decoded
+  // as a space, so the match fails silently and the query returns empty.
+  // Replace '+' with '%20' in the final string. (All prior presets used
+  // space-free values, so this never bit them.)
+  return snowFetch("GET", "/api/now/table/" + table + "?" + params.toString().replace(/\+/g, "%20"))
     .then(function(d) { return d.result || []; });
 }
 
@@ -661,6 +667,8 @@ async function handleMessage(msg) {
   }
 
   // All other actions require a ServiceNow tab
+
+  // All other actions require a ServiceNow tab
   const tab = await findSnowTab();
   const table = detectTable(msg.ticketNumber || "");
 
@@ -680,6 +688,19 @@ async function handleMessage(msg) {
       }
     }
     return ticket;
+  }
+
+  if (msg.action === "takeTicket") {
+    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    const userId = await injectAndExec(tab.id, getUserIdInPage, []);
+    if (!userId) throw new Error("Could not determine current user");
+    const result = await injectAndExec(tab.id, updateBySysIdInPage, [
+      table, sysId, { assigned_to: userId, state: "2" }
+    ]);
+    if (result && result._error) throw new Error(result._error);
+    return { success: true, assignedTo: userId };
   }
 
   if (msg.action === "getNoteTypes") {

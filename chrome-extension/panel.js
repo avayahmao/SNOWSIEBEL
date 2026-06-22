@@ -421,6 +421,63 @@ function renderJournalInline(container, journal, maxShow) {
 
 // Delegated event handler for links (avoids inline onclick which CSP blocks)
 document.addEventListener("click", (e) => {
+  // --- Take (Infinity preset): assign to self + In Progress ---
+  if (e.target.classList.contains("take-link")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    if (!ticket) return;
+    const link = e.target;
+    const originalText = link.textContent;
+    link.classList.add("disabled");
+    link.textContent = "Taking...";
+    send({ action: "takeTicket", ticketNumber: ticket })
+      .then(() => {
+        // Replace link with a static "✓ Taken" marker
+        const taken = document.createElement("span");
+        taken.className = "taken-marker";
+        taken.textContent = "✓ Taken";
+        link.replaceWith(taken);
+        // Refresh this card's state badge to In Progress and show "You" assignee
+        const card = taken.closest(".ticket-card");
+        if (card) {
+          // State badge: In Progress (state 2) is incident-only by design — Infinity alarms
+          // are INCs and takeTicket sends state:"2" unconditionally. The class "state-active"
+          // matches TABLE_STATES.incident.classes["2"]. If this ever extends to another table,
+          // route through getStateConfig/stateBadge instead of hardcoding the class.
+          const badge = card.querySelector(".state-badge");
+          if (badge) {
+            badge.className = "state-badge state-active";
+            badge.textContent = "In Progress";
+          }
+          // Assigned to: find the field line labeled "Assigned to" and append a "You" badge
+          const fields = card.querySelectorAll(".ticket-field");
+          for (const f of fields) {
+            if (/^Assigned to:/i.test(f.textContent.trim())) {
+              // Avoid double-appending if already taken
+              if (!f.querySelector(".take-you")) {
+                const youBadge = document.createElement("span");
+                youBadge.className = "take-you";
+                youBadge.style.marginLeft = "6px";
+                youBadge.textContent = "You";
+                f.appendChild(youBadge);
+              }
+              break;
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        link.classList.remove("disabled");
+        link.textContent = originalText;
+        link.insertAdjacentHTML("afterend", '<span class="inline-err error" style="margin-left:8px">' + userFacingError(err.message) + '</span>');
+        // Clean up the error after a few seconds so retry is clean
+        setTimeout(() => {
+          const next = link.nextElementSibling;
+          if (next && next.classList.contains("inline-err")) next.remove();
+        }, 4000);
+      });
+    return;
+  }
   // --- Toggle Device Password section ---
   if (e.target.classList.contains("toggle-cred")) {
     e.preventDefault();
@@ -999,6 +1056,7 @@ let listAutoLoaded = false;
 
 const PRESETS = {
   "my-open": "active=true^assigned_to=javascript:gs.getUserID()",
+  "my-open-alarms": "active=true^assigned_to=javascript:gs.getUserID()^contact_type=Alarm",
   "my-updated": "assigned_to=javascript:gs.getUserID()^ORDERBYsys_updated_on",
   "my-resolved": "assigned_to=javascript:gs.getUserID()^state=7^resolved_onONLast 7 days@javascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0)",
   "group-open": "active=true^assignment_group=javascript:gs.getUser().getMyGroups()",
@@ -1007,6 +1065,19 @@ const PRESETS = {
   "updated-today": "sys_updated_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_updated_on",
   "created-today": "sys_created_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_created_on",
   "awaiting": "state=4^assigned_to=javascript:gs.getUserID()",
+  // Infinity Alarms (Unassigned) — active, New, Avaya Infinity Platform group, unassigned.
+  //
+  // Two non-obvious encodings, both forced by this instance's ACLs/config:
+  //  1. assignment_group.name=<display>  (dot-walk, NOT assignment_group=<sys_id>)
+  //     The sys_id form hits an ACL that silently excludes unassigned incidents
+  //     from the result set. Verified empirically: sys_id returns 4 (all assigned),
+  //     dot-walk returns 5 (including the unassigned one).
+  //  2. trailing ^EQ  — this instance silently drops the ISEMPTY condition unless
+  //     the query ends with a bare ^EQ terminator. This matches SNOW's own built-in
+  //     "Open - Unassigned" module (module bf2c0383c0a801640128cbe631d11c4b),
+  //     whose encoded query is `active=true^assigned_toISEMPTY^EQ`. Without ^EQ,
+  //     the query returns 0 even though unassigned tickets provably exist.
+  "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ",
 };
 
 document.getElementById("list-preset").addEventListener("change", (e) => {
@@ -1018,8 +1089,13 @@ document.getElementById("list-preset").addEventListener("change", (e) => {
 
 document.getElementById("btn-list").addEventListener("click", async () => {
   const table = document.getElementById("list-table").value;
-  const query = document.getElementById("list-query").value.trim();
+  let query = document.getElementById("list-query").value.trim();
   const limit = parseInt(document.getElementById("list-limit").value) || 10;
+  // Flag for the card-rendering loop: show the Take link only when the Infinity
+  // preset is the active filter. Detected by the dropdown selection, not the query
+  // string, because the Infinity query is now a plain static string (like every
+  // other preset) — there's no marker to intercept.
+  let infinityMode = (document.getElementById("list-preset").value === "infinity-alarms");
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
@@ -1076,6 +1152,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
         }
       }
       html += `<div class="action-links-row">`;
+      if (infinityMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}">Take</a>`;
       html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
       html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;

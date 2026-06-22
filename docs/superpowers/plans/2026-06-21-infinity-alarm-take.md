@@ -1,0 +1,517 @@
+# Infinity Alarm Take Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add a "Infinity Alarms (Unassigned)" List preset that fetches new unassigned Avaya Infinity Platform alarm incidents, with a per-ticket "Take" action that assigns each to the current user and moves it to In Progress.
+
+**Architecture:** Three new pieces ride on the existing panel→background→page(snowFetch) flow: (1) a `getInfinityFilterParams` message that resolves the assignment-group sys_id and caches it in the service worker; (2) a `takeTicket` message that PATCHes `assigned_to` + `state=2`; (3) panel-side preset + Take-link wiring. No new content scripts.
+
+**Tech Stack:** Chrome Extension Manifest V3, ServiceNow REST Table API (`/api/now/table/`), `snowFetch()` injected into the SNOW page's MAIN world. Vanilla JS (no build step, no external deps).
+
+**Testing note:** This project has no automated test harness (per `CLAUDE.md`: "No tests currently"). The feature depends on a live authenticated SNOW session and the page's `g_ck` token, which cannot be meaningfully unit-tested without a mock instance. Tasks therefore follow the spec's manual verification plan rather than a TDD loop. Each task still ends in a commit so changes are bisectable.
+
+**Spec:** `docs/superpowers/specs/2026-06-21-infinity-alarm-take-design.md`
+
+> **Rebase note (2026-06-21):** This plan was originally written against v2.8. The repo has since shipped **v2.9** (Remote Access + Details on List cards, CI sys_id validation, lazy credentials, View Notes always-refetch), which is now published to the Chrome Web Store. This feature therefore targets **v2.10**. The v2.9 changes shift line numbers and add Remote Access / Details / lazy-credential rendering inside the List card loop — they do not change this feature's approach. Line references and quoted code below are verified against the post-rebase codebase.
+
+---
+
+## File Structure
+
+| File | Responsibility | Change |
+|------|----------------|--------|
+| `chrome-extension/background.js` | Service worker orchestration | Add `getInfinityFilterParamsInPage()` page function + `getInfinityFilterParams` / `takeTicket` message handlers + two cache vars |
+| `chrome-extension/panel.js` | Sidebar UI logic | Add preset marker, intercept in list handler, render `.take-link`, delegated Take click handler |
+| `chrome-extension/panel.html` | Static UI | Add one `<option>` to `#list-preset`; add `.take-link` / `.take-you` CSS |
+| `chrome-extension/manifest.json` | Extension metadata | Bump version 2.9 → 2.10 |
+| `CHANGELOG.md` | Release notes | Add `## [2.10]` section above the existing `## [2.9]` entry |
+
+All new behavior lives in existing files following established patterns (page function → `injectAndExec` → message routing; delegated click handler with class selectors). No new files.
+
+---
+
+## Task 1: Bump version and add CHANGELOG entry
+
+**Files:**
+- Modify: `chrome-extension/manifest.json:4`
+- Modify: `CHANGELOG.md` (insert above the existing `## [2.9]` line, which is line 3)
+
+- [ ] **Step 1: Bump manifest version**
+
+In `chrome-extension/manifest.json`, change the version line:
+
+```json
+"version": "2.10",
+```
+
+(was `"2.9"`)
+
+- [ ] **Step 2: Add CHANGELOG entry**
+
+In `CHANGELOG.md`, insert a new section directly under the `# Changelog` header line (above the existing `## [2.9] - 2026-06-10`):
+
+```markdown
+## [2.10] - 2026-06-21
+
+### Added
+- **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group. (Service Model = Event Management condition was dropped during implementation — the instance's ACLs block the sys_dictionary/sys_documentation reads needed to resolve the field name at runtime. Result set is broader; Event Management incidents are identified by eye.) Each card also shows the v2.9 Remote Access / Details info like every other preset.
+- **Take action on Infinity alarm cards** — Each Infinity-preset ticket card has a "Take" link that assigns the incident to you and moves it to In Progress (state 2). Shows a "✓ Taken" state and a "You" assignee badge on success; next list refresh restores the real name.
+- `getInfinityFilterParams` message action in background.js — resolves the assignment-group sys_id (via `sys_user_group`) and caches it for the session. Avoids the display-name dot-walk fragility.
+- `takeTicket` message action in background.js — assigns an incident to the current user and sets state to In Progress.
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add chrome-extension/manifest.json CHANGELOG.md
+git commit -m "chore: bump to v2.10, add Infinity Alarm Take changelog"
+```
+
+---
+
+## Task 2: Add the Infinity preset option + Take-link CSS to the UI
+
+**Files:**
+- Modify: `chrome-extension/panel.html:438` (the last `<option>` in `#list-preset`)
+- Modify: `chrome-extension/panel.html` (the inline `<style>` block — add rules near `.alarm-close-link`)
+
+- [ ] **Step 1: Add the option**
+
+In `chrome-extension/panel.html`, the `#list-preset` select ends with:
+
+```html
+        <option value="awaiting">Awaiting User Info</option>
+```
+
+Add a new option directly **after** it:
+
+```html
+        <option value="awaiting">Awaiting User Info</option>
+        <option value="infinity-alarms">Infinity Alarms (Unassigned)</option>
+```
+
+- [ ] **Step 2: Add the Take-link CSS**
+
+In `chrome-extension/panel.html`, in the inline `<style>` block, find the `.alarm-close-link` rule and add `.take-link` / `.take-you` rules **after** it. The Take link uses success-green to signal a claim action, distinguishing it from the red edit-style links; `.take-you` is the static "✓ Taken" / "You" marker shown after a successful Take:
+
+```css
+.alarm-close-link { color: var(--success); cursor: pointer; font-weight: 600; font-size: var(--text-sm); transition: color var(--transition); }
+.alarm-close-link:hover { color: var(--success-hover); text-decoration: underline; }
+.take-link { color: var(--success); cursor: pointer; font-weight: 600; margin-right: 12px; font-size: var(--text-sm); transition: color var(--transition); }
+.take-link:hover { color: var(--success-hover); text-decoration: underline; }
+.take-link.disabled { color: var(--text-muted); cursor: default; pointer-events: none; }
+.take-you { color: var(--success); font-weight: 600; font-size: var(--text-sm); }
+```
+
+- [ ] **Step 3: Verify it renders**
+
+Load the extension (`chrome://extensions` → reload unpacked), open the sidebar, confirm "Infinity Alarms (Unassigned)" appears as the last item in the List tab Filter dropdown. (Selecting it and clicking Search will do nothing useful yet — that's expected; the marker handler lands in Task 5.)
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add chrome-extension/panel.html
+git commit -m "feat: add Infinity Alarms option + Take-link CSS to List UI"
+```
+
+---
+
+## Task 3: Add `getInfinityFilterParams` page function + message handler in background.js
+
+**Files:**
+- Modify: `chrome-extension/background.js` (add cache vars after the `OCD_AUTH` block; add page function after `getUserIdInPage`; add message routing before the shared `findSnowTab` line)
+
+- [ ] **Step 1: Add the cache variable**
+
+Near the top of `chrome-extension/background.js`, just **after** the `OCD_AUTH` const block (after line 19), add one module-level cache variable:
+
+```js
+// Infinity Alarms filter — the assignment-group sys_id is resolved once per
+// session and cached. Cleared only when the service worker is torn down.
+var cachedAssignmentGroupSysId = null;
+```
+
+- [ ] **Step 2: Add the page function**
+
+In `chrome-extension/background.js`, add this new page function **immediately after** the existing `getUserIdInPage` function (closing brace at line 288; insert at the blank line 289). It resolves the assignment-group sys_id by name. (The original design also resolved the Service Model column name, but that was dropped — see spec §2 "Service Model condition — dropped".)
+
+```js
+function getInfinityFilterParamsInPage() {
+  // Resolve the assignment-group sys_id (by name) for the Infinity Alarms preset.
+  //
+  // The original design also resolved the 'Service Model' column name at runtime
+  // via sys_dictionary / sys_documentation. That was abandoned because the target
+  // instance's ACLs block reads on those tables (query_match / query_range denied).
+  // The filter now drops the Service Model condition entirely.
+  //
+  // chrome.scripting.executeScript cannot propagate a thrown error or Promise
+  // rejection from an injected page function — it serializes both as undefined.
+  // So we catch internally and return { _error } on failure (same pattern as
+  // updateBySysIdInPage).
+  //
+  // URL is built with URLSearchParams because the group name contains spaces.
+  var agParams = new URLSearchParams({
+    sysparm_query: "name=Avaya Infinity Platform",
+    sysparm_fields: "sys_id",
+    sysparm_limit: "1",
+    sysparm_display_value: "false"
+  });
+  return snowFetch("GET", "/api/now/table/sys_user_group?" + agParams)
+    .then(function(d) {
+      var rows = d.result || [];
+      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group (sys_user_group had no match for name=Avaya Infinity Platform). The Infinity Alarms filter cannot run.");
+      var id = rows[0].sys_id;
+      var agSysId = typeof id === "object" ? (id.value || id.display_value) : id;
+      return { agSysId: agSysId };
+    })
+    .catch(function(e) {
+      return { _error: e && e.message ? e.message : String(e) };
+    });
+}
+```
+
+- [ ] **Step 3: Add the message handler**
+
+In `chrome-extension/background.js`, inside `handleMessage` (the `async function handleMessage(msg)` starting at line 532), add a new branch **immediately before** the `// All other actions require a ServiceNow tab` comment (currently line 663). Placing it there means we do our own `findSnowTab` and skip the `detectTable(msg.ticketNumber || "")` call at line 665, which would run on an empty ticket number for this message:
+
+```js
+  if (msg.action === "getInfinityFilterParams") {
+    // Serve from cache if already resolved this session
+    if (cachedAssignmentGroupSysId) {
+      return { agSysId: cachedAssignmentGroupSysId };
+    }
+    const tab = await findSnowTab();
+    const params = await injectAndExec(tab.id, getInfinityFilterParamsInPage, []);
+    // The page function catches internally and returns { _error } on failure —
+    // executeScript swallows thrown errors/rejections, so we can't rely on a throw
+    // propagating. Surface the error here so the panel shows the real reason.
+    if (!params || params._error) {
+      throw new Error(params && params._error ? params._error : "Infinity filter parameter discovery failed (the page function returned no result).");
+    }
+    cachedAssignmentGroupSysId = params.agSysId;
+    return params;
+  }
+```
+
+- [ ] **Step 4: Verify the message is reachable**
+
+Reload the extension. In the sidebar's DevTools console (right-click sidebar → Inspect), run:
+
+```js
+chrome.runtime.sendMessage({ action: "getInfinityFilterParams" }, (r) => console.log(r));
+```
+
+Expected (logged in to SNOW): `{ ok: true, data: { agSysId: "<32-char sys_id>" } }`.
+Expected (not logged in): `{ ok: false, error: "Please open a ServiceNow tab and log in first" }`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add chrome-extension/background.js
+git commit -m "feat: resolve Infinity filter assignment-group sys_id"
+```
+
+---
+
+## Task 4: Add the `takeTicket` message handler in background.js
+
+**Files:**
+- Modify: `chrome-extension/background.js` (add a new message branch inside `handleMessage`, after the `getTicket` block)
+
+- [ ] **Step 1: Add the handler**
+
+In `chrome-extension/background.js`, inside `handleMessage`, add a new branch **after** the `getTicket` handler block (which ends with `return ticket;` at line 682) and **before** `if (msg.action === "getNoteTypes")` (line 685). This placement reuses the shared `tab`/`table` setup from lines 664–665:
+
+```js
+  if (msg.action === "takeTicket") {
+    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    const userId = await injectAndExec(tab.id, getUserIdInPage, []);
+    if (!userId) throw new Error("Could not determine current user");
+    const result = await injectAndExec(tab.id, updateBySysIdInPage, [
+      table, sysId, { assigned_to: userId, state: "2" }
+    ]);
+    if (result && result._error) throw new Error(result._error);
+    return { success: true, assignedTo: userId };
+  }
+```
+
+The `sys_id` extraction pattern (`typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id`) is copied verbatim from the existing `getTicket` handler (background.js:670) and `alarmClose` handler (background.js:734).
+
+- [ ] **Step 2: Verify the message is reachable**
+
+Reload the extension. Find a **non-critical test incident** you own or that is unassigned, note its number (e.g. `INC0000001`). In the sidebar console:
+
+```js
+chrome.runtime.sendMessage({ action: "takeTicket", ticketNumber: "INC0000001" }, (r) => console.log(r));
+```
+
+Expected: `{ ok: true, data: { success: true, assignedTo: "<your sys_id>" } }`. Verify in SNOW that the incident's Assigned to = you and State = In Progress.
+
+⚠️ Only test against an incident you're authorized to modify. This is a real mutation.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add chrome-extension/background.js
+git commit -m "feat: takeTicket message handler (assign to self + In Progress)"
+```
+
+---
+
+## Task 5: Wire the preset marker into the list handler in panel.js
+
+**Files:**
+- Modify: `chrome-extension/panel.js:1009` (the `PRESETS` object) and `panel.js:1019-1023` (the `btn-list` click handler header)
+
+- [ ] **Step 1: Add the preset marker**
+
+In `chrome-extension/panel.js`, in the `PRESETS` object (line 1000), add a new entry as the **last** property (after the `"awaiting"` line at 1009):
+
+```js
+  "awaiting": "state=4^assigned_to=javascript:gs.getUserID()",
+  "infinity-alarms": "__INFINITY_ALARMS__",
+};
+```
+
+The value is an intentional marker, not a usable query — the real query is built at click time once the runtime-only parameters are resolved.
+
+- [ ] **Step 2: Intercept the marker in the btn-list handler**
+
+In `chrome-extension/panel.js`, the `btn-list` click handler starts at line 1019. Its current header is:
+
+```js
+document.getElementById("btn-list").addEventListener("click", async () => {
+  const table = document.getElementById("list-table").value;
+  const query = document.getElementById("list-query").value.trim();
+  const limit = parseInt(document.getElementById("list-limit").value) || 10;
+  showLoading(listResult);
+```
+
+Replace those lines with a version that detects the marker, resolves params, and builds the real query first. Note `query` becomes `let` (it's reassigned) and we introduce `infinityMode` (captured in closure so the card-rendering loop in Task 6 can gate the Take link on it):
+
+```js
+document.getElementById("btn-list").addEventListener("click", async () => {
+  const table = document.getElementById("list-table").value;
+  let query = document.getElementById("list-query").value.trim();
+  const limit = parseInt(document.getElementById("list-limit").value) || 10;
+  // Infinity preset: resolve runtime params, build the real encoded query
+  let infinityMode = false;
+  if (query === "__INFINITY_ALARMS__") {
+    infinityMode = true;
+    showLoading(listResult);
+    try {
+      const params = await send({ action: "getInfinityFilterParams" });
+      query = "active=true^state=1^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
+    } catch (e) {
+      showError(listResult, e.message);
+      return;
+    }
+  }
+  showLoading(listResult);
+```
+
+Leave the rest of the handler body untouched for now — Task 6 will add the `infinityMode`-gated Take link to the card-rendering loop inside that body.
+
+- [ ] **Step 3: Verify the query builds and the list loads**
+
+Reload the extension. Select "Infinity Alarms (Unassigned)" in the Filter dropdown, click Search. Expected: list of incidents renders (or "No tickets found" if none match) — cards will show the v2.9 Remote Access / Details sections too. Confirm in SNOW that the returned incidents all satisfy the 5 filter conditions.
+
+If you see "Could not locate the 'Avaya Infinity Platform' assignment group...", the group-name discovery query needs adjusting for this instance — check the exact group `name` in `sys_user_group`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add chrome-extension/panel.js
+git commit -m "feat: resolve Infinity preset marker into encoded query at list time"
+```
+
+---
+
+## Task 6: Render the Take link on Infinity-preset cards
+
+**Files:**
+- Modify: `chrome-extension/panel.js:1078-1083` (the action-links block inside the `btn-list` card loop)
+
+- [ ] **Step 1: Add the Take link to card rendering**
+
+In `chrome-extension/panel.js`, inside the `btn-list` handler's card loop, the action-links block is at lines 1078–1083:
+
+```js
+      html += `<div class="action-links-row">`;
+      html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
+      html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
+      html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
+      if (displayVal(t.contact_type) === "Alarm" && lCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}">Close Alarm</a>`;
+      html += `</div>`;
+```
+
+Replace it with a version that adds the Take link first when `infinityMode` is true:
+
+```js
+      html += `<div class="action-links-row">`;
+      if (infinityMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}">Take</a>`;
+      html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
+      html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
+      html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
+      if (displayVal(t.contact_type) === "Alarm" && lCfg.supportsAlarmClose) html += `<a class="alarm-close-link" data-ticket="${esc(displayVal(t.number))}">Close Alarm</a>`;
+      html += `</div>`;
+```
+
+- [ ] **Step 2: Verify the link renders**
+
+Reload. Select the Infinity preset, Search. Each card should show a green "Take" link as the first item in the action row, before "View Notes". (Clicking it does nothing yet — handler is Task 7.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add chrome-extension/panel.js
+git commit -m "feat: render Take link on Infinity-preset ticket cards"
+```
+
+---
+
+## Task 7: Implement the Take click handler
+
+**Files:**
+- Modify: `chrome-extension/panel.js` (add a branch to the delegated `click` listener starting at line 423)
+
+- [ ] **Step 1: Add the click branch**
+
+In `chrome-extension/panel.js`, the main delegated `document.addEventListener("click", (e) => { ... })` handler starts at line 423. Add a new branch near the **top** of the handler body (before the existing `toggle-cred` branch at line 425 is a good spot — Take is high-priority and the early return keeps it clean):
+
+```js
+  // --- Take (Infinity preset): assign to self + In Progress ---
+  if (e.target.classList.contains("take-link")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    if (!ticket) return;
+    const link = e.target;
+    const originalText = link.textContent;
+    link.classList.add("disabled");
+    link.textContent = "Taking...";
+    send({ action: "takeTicket", ticketNumber: ticket })
+      .then(() => {
+        // Replace link with a static "✓ Taken" marker
+        const taken = document.createElement("span");
+        taken.className = "take-you";
+        taken.textContent = "✓ Taken";
+        link.replaceWith(taken);
+        // Refresh this card's state badge to In Progress and show "You" assignee
+        const card = taken.closest(".ticket-card");
+        if (card) {
+          // State badge: find the .state-badge and update text/class to In Progress
+          const badge = card.querySelector(".state-badge");
+          if (badge) {
+            badge.className = "state-badge state-active";
+            badge.textContent = "In Progress";
+          }
+          // Assigned to: find the field line labeled "Assigned to" and append a "You" badge
+          const fields = card.querySelectorAll(".ticket-field");
+          for (const f of fields) {
+            if (/^Assigned to:/i.test(f.textContent.trim())) {
+              // Avoid double-appending if already taken
+              if (!f.querySelector(".take-you")) {
+                const youBadge = document.createElement("span");
+                youBadge.className = "take-you";
+                youBadge.style.marginLeft = "6px";
+                youBadge.textContent = "You";
+                f.appendChild(youBadge);
+              }
+              break;
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        link.classList.remove("disabled");
+        link.textContent = originalText;
+        link.insertAdjacentHTML("afterend", '<span class="inline-err error" style="margin-left:8px">' + userFacingError(err.message) + '</span>');
+        // Clean up the error after a few seconds so retry is clean
+        setTimeout(() => {
+          const next = link.nextElementSibling;
+          if (next && next.classList.contains("inline-err")) next.remove();
+        }, 4000);
+      });
+    return;
+  }
+```
+
+- [ ] **Step 2: Verify the full flow**
+
+Reload. Select Infinity preset, Search. Click "Take" on a card:
+- Link shows "Taking...", then is replaced by green "✓ Taken".
+- That card's state badge changes to "In Progress" (amber).
+- A "You" badge appears next to "Assigned to".
+- Verify in SNOW: the incident is now assigned to you, state = In Progress.
+
+Click "Take" on a second card to confirm it works independently.
+
+- [ ] **Step 3: Verify error/retry**
+
+To simulate failure: temporarily disconnect from the network, click Take on a remaining card. Expected: inline red error appears, the link restores to "Take" so you can retry. Reconnect, click again → succeeds.
+
+- [ ] **Step 4: Verify other presets are unaffected**
+
+Select "My Open Tickets", Search. Cards should render with **no** Take link (only View Notes / Add Note / Update Status / Close Alarm as before).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add chrome-extension/panel.js
+git commit -m "feat: Take click handler — assign to self, refresh card UI, show You badge"
+```
+
+---
+
+## Task 8: Full manual verification pass
+
+**Files:** None (verification only)
+
+Run through the complete manual test plan from the spec. Do this against the live SNOW instance with a real (authorized) login.
+
+- [ ] **Step 1: Discovery & caching**
+
+Select Infinity preset, Search. Confirm both params resolved (list loads). Select it again and Search — confirm it still loads (cache hit; no need to inspect network, just confirm correctness).
+
+- [ ] **Step 2: Filter correctness**
+
+Spot-check 2-3 returned incidents in SNOW: all must be Active, State=New, Assignment group=Avaya Infinity Platform, Assigned to=empty. (Service Model is intentionally not filtered — any Service Model in that group may appear; Event Management ones are the target but Break/Fix etc. may also show up. Triage by eye.)
+
+- [ ] **Step 3: Take success + You badge**
+
+Take a card. Verify: card updates (✓ Taken, In Progress badge, You badge), and SNOW shows the incident assigned to you + In Progress.
+
+- [ ] **Step 4: Take refresh restores real name**
+
+After Taking, change the Filter to "My Open Tickets" and Search — the taken incident should appear with your real name as assignee (not "You"), confirming the "You" badge was a transient marker.
+
+- [ ] **Step 5: No results**
+
+(If achievable) find a moment when no unassigned Infinity alarms exist — confirm "No tickets found" renders cleanly.
+
+- [ ] **Step 6: Alarm badge passthrough**
+
+If any returned Infinity alarm has `contact_type=Alarm`, confirm the purple "Alarm" badge AND green "Close Alarm" action appear alongside the Take link on that card (existing logic at panel.js:1045–1047 / 1082).
+
+- [ ] **Step 7: Other presets unaffected**
+
+Confirm "My Open Tickets", "My Recently Updated", "My Resolved", "Awaiting User Info" all work as before and show no Take link.
+
+- [ ] **Step 8: v2.9 Remote Access carries over**
+
+Confirm an Infinity card with a `cmdb_ci` shows the Remote Access block (IP/SE ID/NAT IP/Connectivity) and the lazy "▶ Device Password" link, same as other presets — this comes free from the v2.9 `includeCi: true` list call and needs no extra work.
+
+If all steps pass, the feature is complete. No commit needed (verification only).
+
+---
+
+## Self-Review Notes
+
+Run after writing, results recorded here:
+
+- **Spec coverage:** All spec components map to tasks — preset (T2, T5), query construction (T5), filter param discovery incl. caching + fallback (T3), take action UI + handler incl. You badge (T6, T7), takeTicket handler (T4), error handling (T3/T4/T7), testing (T8), files touched incl. CHANGELOG (T1). ✓
+- **Placeholder scan:** No TBD/TODO; every code step shows full code. ✓
+- **Type/name consistency:** `getInfinityFilterParams` / `getInfinityFilterParamsInPage` / `cachedAssignmentGroupSysId` / `takeTicket` / `infinityMode` / `.take-link` / `.take-you` used consistently across tasks. Message payload shapes (`{ agSysId }`, `{ success, assignedTo }`) match between background and panel. ✓
+- **Rebase verification:** Version bumped to 2.10 (not 2.9). CHANGELOG entry placed above existing `## [2.9]`. All line numbers re-checked against post-rebase codebase: PRESETS at 1000, awaiting line at 1009, btn-list handler at 1019, card action-links at 1078–1083, delegated click listener at 423, handleMessage at 532, `// All other actions` comment at 663, shared `findSnowTab`/`detectTable` at 664–665, `getTicket` block return at 682, `getUserIdInPage` ends at 288 (insertion after blank line 289). ✓
