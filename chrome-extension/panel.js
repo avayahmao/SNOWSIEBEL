@@ -1064,15 +1064,18 @@ const PRESETS = {
   "updated-today": "sys_updated_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_updated_on",
   "created-today": "sys_created_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_created_on",
   "awaiting": "state=4^assigned_to=javascript:gs.getUserID()",
-  "infinity-alarms": "__INFINITY_ALARMS__",
+  // Infinity Alarms (Unassigned) — active, New, Avaya Infinity Platform group, unassigned.
+  // Uses a dot-walk on assignment_group.name rather than resolving the group sys_id.
+  // Reason: querying by assignment_group=<sys_id> hits an ACL on this instance that
+  // EXCLUDES unassigned incidents from the result set (verified empirically — sys_id
+  // query returns 4 assigned incidents; the same dot-walk query returns 5, including
+  // the unassigned one). The dot-walk bypasses that ACL.
+  "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY",
 };
 
 document.getElementById("list-preset").addEventListener("change", (e) => {
   const preset = e.target.value;
   if (preset && PRESETS[preset]) {
-    // For the Infinity preset, this stores the __INFINITY_ALARMS__ marker (not a usable
-    // query). The btn-list handler detects the marker and resolves the real query at click
-    // time. The marker intentionally persists in this hidden field; no other code reads it.
     document.getElementById("list-query").value = PRESETS[preset];
   }
 });
@@ -1081,19 +1084,11 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   const table = document.getElementById("list-table").value;
   let query = document.getElementById("list-query").value.trim();
   const limit = parseInt(document.getElementById("list-limit").value) || 10;
-  // Infinity preset: resolve runtime params, build the real encoded query
-  let infinityMode = false;
-  if (query === "__INFINITY_ALARMS__") {
-    infinityMode = true;
-    showLoading(listResult);
-    try {
-      const params = await send({ action: "getInfinityFilterParams" });
-      query = "active=true^state=1^assignment_group=" + params.agSysId + "^assigned_toISEMPTY";
-    } catch (e) {
-      showError(listResult, e.message);
-      return;
-    }
-  }
+  // Flag for the card-rendering loop: show the Take link only when the Infinity
+  // preset is the active filter. Detected by the dropdown selection, not the query
+  // string, because the Infinity query is now a plain static string (like every
+  // other preset) — there's no marker to intercept.
+  let infinityMode = (document.getElementById("list-preset").value === "infinity-alarms");
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });

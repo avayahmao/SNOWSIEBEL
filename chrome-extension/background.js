@@ -18,10 +18,6 @@ const OCD_AUTH = {
   auth_key:  _dec([92,6,6,106,4,71,90,102,21,10,89,86,0,57,89,69,93,61,67,6,13,91,6,60,7,18,80,102,66,0,93,86])
 };
 
-// Infinity Alarms filter — the assignment-group sys_id is resolved once per
-// session and cached. Cleared only when the service worker is torn down.
-var cachedAssignmentGroupSysId = null;
-
 // Open sidebar when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
@@ -289,43 +285,6 @@ function getUserIdInPage() {
   return snowFetch("GET", "/api/now/table/sys_user?sysparm_query=user_name=javascript:gs.getUserName()&sysparm_limit=1&sysparm_fields=sys_id")
     .then(function(d) { return d.result && d.result[0] ? d.result[0].sys_id : ""; })
     .catch(function() { return ""; });
-}
-
-function getInfinityFilterParamsInPage() {
-  // Resolve the assignment-group sys_id (by name) for the Infinity Alarms preset.
-  //
-  // Background: the original design also resolved the 'Service Model' column name
-  // at runtime via sys_dictionary / sys_documentation. That was abandoned because
-  // the target ServiceNow instance's ACLs block reads on those tables
-  // (query_match / query_range denied), so any label-based discovery returns empty
-  // regardless of the query. The filter now drops the Service Model condition
-  // entirely (Approach C from brainstorming) — broader result set, triaged by eye.
-  //
-  // IMPORTANT: chrome.scripting.executeScript cannot propagate a thrown error or a
-  // Promise rejection from an injected page function back to the caller — it
-  // serializes both as result: undefined. So we catch internally and surface
-  // failures as { _error: "..." } (same pattern as updateBySysIdInPage), and the
-  // background handler checks params._error before dereferencing the fields.
-  //
-  // URL construction uses URLSearchParams because the query value contains spaces.
-  // SNOW parses an unencoded space as a parameter delimiter and returns empty.
-  var agParams = new URLSearchParams({
-    sysparm_query: "name=Avaya Infinity Platform",
-    sysparm_fields: "sys_id",
-    sysparm_limit: "1",
-    sysparm_display_value: "false"
-  });
-  return snowFetch("GET", "/api/now/table/sys_user_group?" + agParams)
-    .then(function(d) {
-      var rows = d.result || [];
-      if (!rows.length) throw new Error("Could not locate the 'Avaya Infinity Platform' assignment group (sys_user_group had no match for name=Avaya Infinity Platform). The Infinity Alarms filter cannot run.");
-      var id = rows[0].sys_id;
-      var agSysId = typeof id === "object" ? (id.value || id.display_value) : id;
-      return { agSysId: agSysId };
-    })
-    .catch(function(e) {
-      return { _error: e && e.message ? e.message : String(e) };
-    });
 }
 
 // Directly update the incident/task's aggregate time_worked field
@@ -701,22 +660,7 @@ async function handleMessage(msg) {
     return { success: true, steps };
   }
 
-  if (msg.action === "getInfinityFilterParams") {
-    // Serve from cache if already resolved this session
-    if (cachedAssignmentGroupSysId) {
-      return { agSysId: cachedAssignmentGroupSysId };
-    }
-    const tab = await findSnowTab();
-    const params = await injectAndExec(tab.id, getInfinityFilterParamsInPage, []);
-    // The page function catches internally and returns { _error } on failure —
-    // executeScript swallows thrown errors/rejections, so we can't rely on a throw
-    // propagating. Surface the error here so the panel shows the real reason.
-    if (!params || params._error) {
-      throw new Error(params && params._error ? params._error : "Infinity filter parameter discovery failed (the page function returned no result).");
-    }
-    cachedAssignmentGroupSysId = params.agSysId;
-    return params;
-  }
+  // All other actions require a ServiceNow tab
 
   // All other actions require a ServiceNow tab
   const tab = await findSnowTab();
