@@ -434,13 +434,16 @@ document.addEventListener("click", (e) => {
       .then(() => {
         // Replace link with a static "✓ Taken" marker
         const taken = document.createElement("span");
-        taken.className = "take-you";
+        taken.className = "taken-marker";
         taken.textContent = "✓ Taken";
         link.replaceWith(taken);
         // Refresh this card's state badge to In Progress and show "You" assignee
         const card = taken.closest(".ticket-card");
         if (card) {
-          // State badge: find the .state-badge and update text/class to In Progress
+          // State badge: In Progress (state 2) is incident-only by design — Infinity alarms
+          // are INCs and takeTicket sends state:"2" unconditionally. The class "state-active"
+          // matches TABLE_STATES.incident.classes["2"]. If this ever extends to another table,
+          // route through getStateConfig/stateBadge instead of hardcoding the class.
           const badge = card.querySelector(".state-badge");
           if (badge) {
             badge.className = "state-badge state-active";
@@ -1067,6 +1070,9 @@ const PRESETS = {
 document.getElementById("list-preset").addEventListener("change", (e) => {
   const preset = e.target.value;
   if (preset && PRESETS[preset]) {
+    // For the Infinity preset, this stores the __INFINITY_ALARMS__ marker (not a usable
+    // query). The btn-list handler detects the marker and resolves the real query at click
+    // time. The marker intentionally persists in this hidden field; no other code reads it.
     document.getElementById("list-query").value = PRESETS[preset];
   }
 });

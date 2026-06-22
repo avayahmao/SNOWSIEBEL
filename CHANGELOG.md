@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.10] - 2026-06-21
+## [2.10] - 2026-06-22
 
 ### Added
 - **Infinity Alarms (Unassigned) preset** — New List tab filter that pulls all active, New, unassigned incidents in the "Avaya Infinity Platform" assignment group with Service Model = Event Management. Reproduces the standard Infinity alarm triage filter in one click. Each card also shows the v2.9 Remote Access / Details info like every other preset.
