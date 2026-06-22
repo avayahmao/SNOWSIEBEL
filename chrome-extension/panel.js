@@ -421,6 +421,60 @@ function renderJournalInline(container, journal, maxShow) {
 
 // Delegated event handler for links (avoids inline onclick which CSP blocks)
 document.addEventListener("click", (e) => {
+  // --- Take (Infinity preset): assign to self + In Progress ---
+  if (e.target.classList.contains("take-link")) {
+    e.preventDefault();
+    const ticket = e.target.dataset.ticket;
+    if (!ticket) return;
+    const link = e.target;
+    const originalText = link.textContent;
+    link.classList.add("disabled");
+    link.textContent = "Taking...";
+    send({ action: "takeTicket", ticketNumber: ticket })
+      .then(() => {
+        // Replace link with a static "✓ Taken" marker
+        const taken = document.createElement("span");
+        taken.className = "take-you";
+        taken.textContent = "✓ Taken";
+        link.replaceWith(taken);
+        // Refresh this card's state badge to In Progress and show "You" assignee
+        const card = taken.closest(".ticket-card");
+        if (card) {
+          // State badge: find the .state-badge and update text/class to In Progress
+          const badge = card.querySelector(".state-badge");
+          if (badge) {
+            badge.className = "state-badge state-active";
+            badge.textContent = "In Progress";
+          }
+          // Assigned to: find the field line labeled "Assigned to" and append a "You" badge
+          const fields = card.querySelectorAll(".ticket-field");
+          for (const f of fields) {
+            if (/^Assigned to:/i.test(f.textContent.trim())) {
+              // Avoid double-appending if already taken
+              if (!f.querySelector(".take-you")) {
+                const youBadge = document.createElement("span");
+                youBadge.className = "take-you";
+                youBadge.style.marginLeft = "6px";
+                youBadge.textContent = "You";
+                f.appendChild(youBadge);
+              }
+              break;
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        link.classList.remove("disabled");
+        link.textContent = originalText;
+        link.insertAdjacentHTML("afterend", '<span class="inline-err error" style="margin-left:8px">' + userFacingError(err.message) + '</span>');
+        // Clean up the error after a few seconds so retry is clean
+        setTimeout(() => {
+          const next = link.nextElementSibling;
+          if (next && next.classList.contains("inline-err")) next.remove();
+        }, 4000);
+      });
+    return;
+  }
   // --- Toggle Device Password section ---
   if (e.target.classList.contains("toggle-cred")) {
     e.preventDefault();
