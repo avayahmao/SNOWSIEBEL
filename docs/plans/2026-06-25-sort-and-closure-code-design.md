@@ -109,9 +109,9 @@ One extra field on an already-returned record — no extra round-trip, negligibl
 
 Implications for this feature:
 - To test `compareTickets`, add a **local copy** of it to the test file (mirroring the existing local-helper pattern) — the harness can't reach `panel.js` directly.
-- The priority-first integration sort (lines 69-73) can be refactored to call `compareTickets(a, b, "priority", "asc")`; its expected order `["INC003","INC002","INC005","INC004","INC001"]` must still hold (it will, since the priority→stale-desc tiebreak is preserved).
+- **Leave the priority-first integration sort (lines 69-73) untouched.** It uses its own inline sort and is independent of `panel.js`; refactoring it to call `compareTickets` would risk a passing test for no benefit. The new `compareTickets` cases (including a `priority asc` case) cover the same behavior separately.
 - Add new cases: each of the 6 keys × 2 directions, with crafted ticket objects (use `{value, display_value}` shapes to exercise the B2 fix).
-- Existing assertions stay green as long as the refactored priority-first call reproduces today's order — verify in the test run, don't assume.
+- Existing assertions stay green — they don't touch the code being changed.
 
 ---
 
@@ -223,7 +223,7 @@ Populated at panel init. Read in the `btn-alarm-close` handler (`panel.js:1292`)
 | `chrome-extension/panel.html` | +Sort key/dir selects (List toolbar); +Closure Code select (Action tab alarm-close-group) |
 | `chrome-extension/panel.js` | `compareTickets()` helper + wire-in; sort persistence; `loadStatusReasons()` + `buildStatusReasonOptions()` + init call; read closure code in both alarm-close submit paths |
 | `chrome-extension/background.js` | `getStatusReasonsInPage()` + handler; `u_status_reason` from `msg.statusReason` with fallback; **append `sys_created_on` to default list fields** (B1) |
-| `tests/sort-verify.js` | New cases for 6 keys × 2 directions; priority-first becomes comparator call |
+| `tests/sort-verify.js` | New cases for 6 keys × 2 directions, added alongside the existing priority-first integration test (which stays as-is). |
 
 No new files. No new permissions. No manifest change.
 
