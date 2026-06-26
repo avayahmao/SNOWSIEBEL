@@ -249,6 +249,28 @@ function getNoteTypesInPage() {
     });
 }
 
+// Closure-code options for alarm-close (u_status_reason). Same pattern as
+// getNoteTypesInPage — sequence-sorted, object-aware field extraction.
+// NOTE: the element= value and nameIN scope are inferred from the note-types
+// query (design R2). If the smoke test shows this returns nothing, the panel's
+// fallback list still keeps the feature working; adjust element= here then.
+function getStatusReasonsInPage() {
+  return snowFetch("GET", "/api/now/table/sys_choice?sysparm_query=element=u_status_reason^nameINincident,task^inactive=false&sysparm_fields=label,value,sequence&sysparm_display_value=all&sysparm_limit=200")
+    .then(function(d) {
+      var items = d.result || [];
+      items.sort(function(a, b) {
+        var sa = parseInt(typeof a.sequence === "object" ? a.sequence.value : a.sequence) || 0;
+        var sb = parseInt(typeof b.sequence === "object" ? b.sequence.value : b.sequence) || 0;
+        return sa - sb;
+      });
+      return items.map(function(r) {
+        var lbl = (typeof r.label === "object" ? r.label.display_value || r.label.value : r.label) || "";
+        var val = (typeof r.value === "object" ? r.value.value : r.value) || "";
+        return { label: lbl, value: val };
+      });
+    });
+}
+
 function getTicketInPage(table, ticketNumber) {
   return snowFetch("GET", "/api/now/table/" + table + "?sysparm_query=number=" + ticketNumber + "&sysparm_limit=1&sysparm_display_value=all")
     .then(function(d) { return d.result && d.result[0] ? d.result[0] : null; });
@@ -705,6 +727,10 @@ async function handleMessage(msg) {
 
   if (msg.action === "getNoteTypes") {
     return injectAndExec(tab.id, getNoteTypesInPage, []);
+  }
+
+  if (msg.action === "getStatusReasons") {
+    return injectAndExec(tab.id, getStatusReasonsInPage, []);
   }
 
   if (msg.action === "listTickets") {
