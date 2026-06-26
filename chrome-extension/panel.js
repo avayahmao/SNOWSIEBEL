@@ -278,6 +278,69 @@ function parsePriority(value) {
   return m ? parseInt(m[1], 10) : 99; // unknown priority sorts last
 }
 
+// valueVal: like displayVal but prefers .value. For state, display_value is a
+// localized label ("New") and the numeric code lives in .value — displayVal()
+// would parseInt("New")→NaN→0, so the state sort silently no-ops'd. (Caught by
+// the compareTickets characterization test in tests/sort-verify.js.)
+function valueVal(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "object") return v.value || v.display_value || "";
+  return String(v);
+}
+
+// Compare two tickets for the List sort. `key` ∈ id/priority/stale/updated/created/state;
+// `dir` ∈ asc/desc. All field access via displayVal/valueVal/parseUpdatedOn (the query
+// uses sysparm_display_value=all, so fields arrive as {value, display_value} objects —
+// raw Date.parse would NaN). Tiebreaks are fixed-direction per the design.
+// Byte-identical (minus this preamble) to the reference copy in tests/sort-verify.js.
+function compareTickets(a, b, key, dir) {
+  const mult = dir === "desc" ? -1 : 1;
+  if (key === "id") {
+    const ma = (displayVal(a.number) || "").match(/(\d+)$/);
+    const mb = (displayVal(b.number) || "").match(/(\d+)$/);
+    const na = ma ? parseInt(ma[1], 10) : 0;
+    const nb = mb ? parseInt(mb[1], 10) : 0;
+    return (na - nb) * mult;
+  }
+  if (key === "priority") {
+    const pa = parsePriority(a.priority), pb = parsePriority(b.priority);
+    if (pa !== pb) return (pa - pb) * mult;
+    return staleDays(b.sys_updated_on) - staleDays(a.sys_updated_on); // tiebreak: stale desc
+  }
+  if (key === "stale") {
+    const sa = staleDays(a.sys_updated_on), sb = staleDays(b.sys_updated_on);
+    if (sa !== sb) return (sa - sb) * mult;
+    return parsePriority(a.priority) - parsePriority(b.priority); // tiebreak: priority asc
+  }
+  if (key === "updated") {
+    const ta = parseUpdatedOn(a.sys_updated_on), tb = parseUpdatedOn(b.sys_updated_on);
+    const va = ta ? ta.getTime() : 0, vb = tb ? tb.getTime() : 0;
+    if (va !== vb) return (va - vb) * mult;
+    return cmpIdDesc(a, b); // tiebreak: id desc
+  }
+  if (key === "created") {
+    const ta = parseUpdatedOn(a.sys_created_on), tb = parseUpdatedOn(b.sys_created_on);
+    const va = ta ? ta.getTime() : 0, vb = tb ? tb.getTime() : 0;
+    if (va !== vb) return (va - vb) * mult;
+    return cmpIdDesc(a, b); // tiebreak: id desc
+  }
+  if (key === "state") {
+    const sa = parseInt(valueVal(a.state), 10) || 0;
+    const sb = parseInt(valueVal(b.state), 10) || 0;
+    if (sa !== sb) return (sa - sb) * mult;
+    return parsePriority(a.priority) - parsePriority(b.priority); // tiebreak: priority asc
+  }
+  return 0;
+}
+// id-desc tiebreak helper (used by updated/created)
+function cmpIdDesc(a, b) {
+  const ma = (displayVal(a.number) || "").match(/(\d+)$/);
+  const mb = (displayVal(b.number) || "").match(/(\d+)$/);
+  const na = ma ? parseInt(ma[1], 10) : 0;
+  const nb = mb ? parseInt(mb[1], 10) : 0;
+  return nb - na;
+}
+
 // Siebel severity rank: OTG(0) > SBI(1) > BI(2) > NBI(3); unknown sorts last
 const SBL_SEVERITY_RANK = { "OTG": 0, "SBI": 1, "BI": 2, "NBI": 3 };
 function sblSeverityRank(name) {
@@ -1110,15 +1173,12 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
-    // Sort: priority ascending (P1 first), then stale days descending (stalest first)
-    tickets.sort((a, b) => {
-      const pa = parsePriority(a.priority);
-      const pb = parsePriority(b.priority);
-      if (pa !== pb) return pa - pb;
-      const sa = staleDays(a.sys_updated_on);
-      const sb = staleDays(b.sys_updated_on);
-      return sb - sa;
-    });
+    // Sort: user-selected key + direction (default Case ID desc). Comparator
+    // routes all field access through displayVal/valueVal/parseUpdatedOn so the
+    // {value, display_value} objects from sysparm_display_value=all don't NaN.
+    const sortKey = document.getElementById("list-sort-key").value;
+    const sortDir = document.getElementById("list-sort-dir").value;
+    tickets.sort((a, b) => compareTickets(a, b, sortKey, sortDir));
     if (!tickets.length) {
       listResult.innerHTML = '<div class="ticket-field" style="padding:8px">No tickets found</div>';
       return;
