@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.11] - 2026-06-26
+
+### Added
+- **List sort control** — New "Sort" + "Order" dropdowns in the List tab toolbar. Sort by Case ID, Priority, Stale days, Last updated, Created, or State; Ascending or Descending. Selection persists across sessions (`snow_list_sort_key` / `snow_list_sort_dir` in localStorage). `compareTickets()` replaces the old hardcoded priority→stale order.
+- **Closure Code on alarm close** — The `u_status_reason` field is now a user-selectable dropdown on both alarm-close surfaces (Action tab and inline List form), fetched dynamically from `sys_choice` (same pattern as Work Note Types). Default remains "Alarm(s) Cleared on Access" for unchanged behavior.
+
+### Changed
+- **Default List sort is now Case ID descending (new on top).** Previously the List auto-loaded with priority-first/stalest-first ordering. Existing users who relied on the P1-first startup view should switch the Sort dropdown to "Priority" — the choice then persists. (Design P1.)
+- `listTicketsInPage` default fields now include `sys_created_on` (enables the Created sort; one extra field on an already-returned record, no extra request).
+
+### Fixed
+- **State sort bug** (found during implementation): the original design routed the state comparator through `displayVal()`, which returns the localized label (e.g. "New") rather than the numeric code, so `parseInt("New")` → `NaN` → every state compared equal and "sort by state" silently no-op'd. Fixed by adding a `valueVal()` helper that prefers `.value`; the state branch now uses it. The other five keys were unaffected (their display values embed the sort value).
+
+### Notes
+- The Closure Code dropdown's dynamic fetch uses the inferred query `element=u_status_reason^nameINincident,task` (mirrors the proven note-types query). **This query has not been validated against the live instance** (design R2 — the manual sys_choice check was deferred to the v2.11 smoke test). If it returns nothing, the dropdown silently falls back to the single verified value "Alarm(s) Cleared on Access" and the feature still works at current behavior; the `element=` value can be corrected in `getStatusReasonsInPage` without other changes.
+
 ## [2.10] - 2026-06-22
 
 ### Added
