@@ -1080,6 +1080,17 @@ const PRESETS = {
   "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ",
 };
 
+// Restore saved List sort selections; default = Case ID desc (new on top)
+function restoreListSort() {
+  const keySel = document.getElementById("list-sort-key");
+  const dirSel = document.getElementById("list-sort-dir");
+  if (!keySel || !dirSel) return;
+  keySel.value = localStorage.getItem("snow_list_sort_key") || "id";
+  dirSel.value = localStorage.getItem("snow_list_sort_dir") || "desc";
+  keySel.addEventListener("change", () => localStorage.setItem("snow_list_sort_key", keySel.value));
+  dirSel.addEventListener("change", () => localStorage.setItem("snow_list_sort_dir", dirSel.value));
+}
+
 document.getElementById("list-preset").addEventListener("change", (e) => {
   const preset = e.target.value;
   if (preset && PRESETS[preset]) {
@@ -1435,6 +1446,8 @@ document.getElementById("btn-update").addEventListener("click", async () => {
 
 // --- Load note types from SNOW ---
 loadNoteTypes();
+// --- Restore saved List sort selection (default: Case ID desc) ---
+restoreListSort();
 
 // --- Auto-load My Open Tickets on startup (List is default tab) ---
 listAutoLoaded = true;
