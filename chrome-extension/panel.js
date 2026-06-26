@@ -208,6 +208,41 @@ function buildNoteTypeOptions(selectedValue) {
   return html;
 }
 
+var STATUS_REASON_VALUES = null; // [{label, value}] from SNOW sys_choice
+
+// R1: fallback is the single verified value only — we don't invent close-reason
+// strings SNOW might reject on write. Custom/other reasons come from the dynamic
+// fetch once it loads (a <select> can't accept typed input).
+function buildStatusReasonOptions(selectedValue) {
+  var FALLBACK = ["Alarm(s) Cleared on Access"];
+  var html = '';
+  var src = STATUS_REASON_VALUES
+    ? STATUS_REASON_VALUES.map(function(r) { return { val: r.value || r.label, lbl: r.label || r.value }; })
+    : FALLBACK.map(function(v) { return { val: v, lbl: v }; });
+  for (var i = 0; i < src.length; i++) {
+    var o = src[i];
+    var isSel = (o.val === selectedValue || o.lbl === selectedValue);
+    html += '<option value="' + esc(o.val) + '"' + (isSel ? ' selected' : '') + '>' + esc(o.lbl) + '</option>';
+  }
+  return html;
+}
+
+function loadStatusReasons() {
+  send({ action: "getStatusReasons" }).then(function(reasons) {
+    if (reasons && reasons.length > 0) {
+      STATUS_REASON_VALUES = reasons;
+      // Repopulate every closure-code select (inline forms already open + Action tab).
+      // R3: preserves sel.value; if the user picked a fallback-only value not in the
+      // dynamic list, the select resets to the first option — benign (default is the
+      // verified value, which exists in both lists).
+      document.querySelectorAll(".alarm-reason-select, #alarm-reason").forEach(function(sel) {
+        var cur = sel.value;
+        sel.innerHTML = buildStatusReasonOptions(cur || "Alarm(s) Cleared on Access");
+      });
+    }
+  }).catch(function() { /* keep fallback */ });
+}
+
 function stateBadge(state, table) {
   const cfg = getStateConfig(table || "incident");
   const dv = displayVal(state);
@@ -1508,6 +1543,8 @@ document.getElementById("btn-update").addEventListener("click", async () => {
 loadNoteTypes();
 // --- Restore saved List sort selection (default: Case ID desc) ---
 restoreListSort();
+// --- Load closure-code options from SNOW (fallback: single verified value) ---
+loadStatusReasons();
 
 // --- Auto-load My Open Tickets on startup (List is default tab) ---
 listAutoLoaded = true;
