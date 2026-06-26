@@ -1417,7 +1417,8 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
     }
   }
   try {
-    const data = await send({ action: "alarmClose", ticketNumber: number, note, effortMinutes });
+    const statusReason = document.getElementById("alarm-reason").value;
+    const data = await send({ action: "alarmClose", ticketNumber: number, note, effortMinutes, statusReason });
     // Show step-by-step progress
     let html = "";
     for (let i = 0; i < data.steps.length; i++) {
@@ -1545,6 +1546,9 @@ loadNoteTypes();
 restoreListSort();
 // --- Load closure-code options from SNOW (fallback: single verified value) ---
 loadStatusReasons();
+// Render closure-code fallback immediately (dynamic load refreshes it async)
+var ar = document.getElementById("alarm-reason");
+if (ar) ar.innerHTML = buildStatusReasonOptions("Alarm(s) Cleared on Access");
 
 // --- Auto-load My Open Tickets on startup (List is default tab) ---
 listAutoLoaded = true;
