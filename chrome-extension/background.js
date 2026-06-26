@@ -813,7 +813,7 @@ async function handleMessage(msg) {
       const stepLabel = labels[targetState] || targetState;
       const fields = { state: targetState };
       if (targetState === "6" || targetState === "7") {
-        fields.u_status_reason = "Alarm(s) Cleared on Access";
+        fields.u_status_reason = msg.statusReason || "Alarm(s) Cleared on Access";
       }
       if (targetState === "7") {
         fields.work_notes = msg.note;
