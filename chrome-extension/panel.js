@@ -982,6 +982,10 @@ document.addEventListener("click", (e) => {
       + '<option value="False alarm confirmed. No further action required.">False alarm confirmed</option>'
       + '<option value="">Custom</option>'
       + '</select></div>'
+      + '<div style="margin-bottom:4px"><label>Closure Code</label>'
+      + '<select class="alarm-reason-select" data-form="' + formId + '">'
+      +   buildStatusReasonOptions("Alarm(s) Cleared on Access")
+      + '</select></div>'
       + '<div style="margin-bottom:4px"><label>Close Note</label>'
       + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="6">' + esc(defaultTmpl) + '</textarea></div>'
       + '<div class="effort-row">'
@@ -1004,6 +1008,7 @@ document.addEventListener("click", (e) => {
     const noteInput = form ? form.querySelector(".alarm-note-input") : null;
     const effortInput = form ? form.querySelector(".alarm-effort-input") : null;
     const effortUnitEl = form ? form.querySelector(".alarm-effort-unit") : null;
+    const reasonSel = form ? form.querySelector(".alarm-reason-select") : null;
     const note = noteInput ? noteInput.value.trim() : "";
     if (!note) {
       if (noteInput) noteInput.style.borderColor = "var(--danger)";
@@ -1020,7 +1025,8 @@ document.addEventListener("click", (e) => {
     const btn = e.target;
     btn.disabled = true;
     btn.textContent = "Closing...";
-    send({ action: "alarmClose", ticketNumber: ticket, note, effortMinutes })
+    const statusReason = reasonSel ? reasonSel.value : "";
+    send({ action: "alarmClose", ticketNumber: ticket, note, effortMinutes, statusReason })
       .then((data) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
