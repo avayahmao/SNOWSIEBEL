@@ -208,39 +208,27 @@ function buildNoteTypeOptions(selectedValue) {
   return html;
 }
 
-var STATUS_REASON_VALUES = null; // [{label, value}] from SNOW sys_choice
-
-// R1: fallback is the single verified value only — we don't invent close-reason
-// strings SNOW might reject on write. Custom/other reasons come from the dynamic
-// fetch once it loads (a <select> can't accept typed input).
+// Closure-code options for alarm-close (u_status_reason). Sourced from the same
+// hardcoded TABLE_STATES config the "Update Status → Closed" dropdown uses
+// (incident reasons[7] = Closed), NOT a live sys_choice fetch — that fetch
+// (element=u_status_reason^nameINincident,task) returned nothing on this instance
+// (design R2 gate failed at the smoke test). The config list is the verified
+// source. "-- None --" is omitted: the alarm-close chain writes a real
+// u_status_reason, so a None value would store junk or be rejected.
 function buildStatusReasonOptions(selectedValue) {
+  var CLOSED_STATE = "7";
   var FALLBACK = ["Alarm(s) Cleared on Access"];
+  var cfg = getStateConfig("incident");
+  var raw = (cfg && cfg.reasons && cfg.reasons[CLOSED_STATE]) ? cfg.reasons[CLOSED_STATE] : FALLBACK;
+  var src = raw.filter(function(v) { return v && v !== "-- None --"; });
+  if (src.length === 0) src = FALLBACK.slice();
   var html = '';
-  var src = STATUS_REASON_VALUES
-    ? STATUS_REASON_VALUES.map(function(r) { return { val: r.value || r.label, lbl: r.label || r.value }; })
-    : FALLBACK.map(function(v) { return { val: v, lbl: v }; });
   for (var i = 0; i < src.length; i++) {
-    var o = src[i];
-    var isSel = (o.val === selectedValue || o.lbl === selectedValue);
-    html += '<option value="' + esc(o.val) + '"' + (isSel ? ' selected' : '') + '>' + esc(o.lbl) + '</option>';
+    var v = src[i];
+    var isSel = (v === selectedValue);
+    html += '<option value="' + esc(v) + '"' + (isSel ? ' selected' : '') + '>' + esc(v) + '</option>';
   }
   return html;
-}
-
-function loadStatusReasons() {
-  send({ action: "getStatusReasons" }).then(function(reasons) {
-    if (reasons && reasons.length > 0) {
-      STATUS_REASON_VALUES = reasons;
-      // Repopulate every closure-code select (inline forms already open + Action tab).
-      // R3: preserves sel.value; if the user picked a fallback-only value not in the
-      // dynamic list, the select resets to the first option — benign (default is the
-      // verified value, which exists in both lists).
-      document.querySelectorAll(".alarm-reason-select, #alarm-reason").forEach(function(sel) {
-        var cur = sel.value;
-        sel.innerHTML = buildStatusReasonOptions(cur || "Alarm(s) Cleared on Access");
-      });
-    }
-  }).catch(function() { /* keep fallback */ });
 }
 
 function stateBadge(state, table) {
@@ -1550,9 +1538,7 @@ document.getElementById("btn-update").addEventListener("click", async () => {
 loadNoteTypes();
 // --- Restore saved List sort selection (default: Case ID desc) ---
 restoreListSort();
-// --- Load closure-code options from SNOW (fallback: single verified value) ---
-loadStatusReasons();
-// Render closure-code fallback immediately (dynamic load refreshes it async)
+// --- Render closure-code options (sourced from TABLE_STATES, same as Update Status → Closed) ---
 var ar = document.getElementById("alarm-reason");
 if (ar) ar.innerHTML = buildStatusReasonOptions("Alarm(s) Cleared on Access");
 
