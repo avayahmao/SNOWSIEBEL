@@ -3,7 +3,7 @@
 ## Listing Details
 
 - **Name:** SNOW + Siebel Ticket Manager
-- **Version:** 2.9
+- **Version:** 2.11
 - **Category:** Workflow & Planning
 - **Language:** English
 
@@ -19,7 +19,7 @@ SNOW + Siebel Ticket Manager is a Chrome sidebar extension for managing ServiceN
 
 ### ServiceNow Features
 
-- **List** — View your open tickets with quick filter presets (My Open, Recently Updated, Resolved, Awaiting User Info). Inline actions let you add notes, update status, or close alarm INCs without switching tabs. Stale tickets are highlighted: yellow for ≥7 days, red with pulsing badge for ≥14 days since last update. Remote Access info (IP, SE ID, NAT IP, Connectivity) is shown inline on every card; device credentials lazy-load on click.
+- **List** — View your open tickets with quick filter presets (My Open, My Open Alarms, Recently Updated, Resolved, Awaiting User Info, Infinity Alarms). Sort by Case ID, Priority, Stale days, Last updated, Created, or State — Ascending or Descending; the choice persists across sessions. Inline actions let you add notes, update status, or close alarm INCs without switching tabs. Stale tickets are highlighted: yellow for ≥7 days, red with pulsing badge for ≥14 days since last update. Remote Access info (IP, SE ID, NAT IP, Connectivity) is shown inline on every card; device credentials lazy-load on click. Infinity preset cards have a "Take" link to claim an unassigned incident in one click.
 - **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time tracking, and message. Default type is "Internal Only". All notes are internal (ACL restriction on public comments).
 - **Action** — Update ticket state with per-table state dropdowns, status reason, follow-up datetime, and resolution notes. State options adapt to the detected ticket type. Alarm INCs get a dedicated quick-close section. CI Remote Access shows device info and credentials.
 - **Query** — Search any ticket by number to view full details, CI Remote Access info, device passwords, and activity log.
@@ -38,7 +38,7 @@ Every ticket card in List and Query results has expandable inline forms — no t
 
 - **+ Add Note** — Work note type, effort time, message
 - **Update Status** — Per-table state options, status reason, follow-up date, notes, effort time
-- **Close Alarm** — Note template, close note, effort time (alarm INCs only)
+- **Close Alarm** — Note template, closure code, close note, effort time (alarm INCs only)
 - **View Notes** — Inline journal viewer with color-coded work notes and comments
 
 Only one form can be open at a time per ticket. Forms stay usable after submission.
@@ -48,7 +48,7 @@ Only one form can be open at a time per ticket. Forms stay usable after submissi
 Alarm-generated INCs (detected by contact_type = Alarm) get a purple "Alarm" badge and a green "Close Alarm" action that chains state transitions automatically:
 
 - New/In Progress/Pending/Assigned → Service Restored → Resolved → Closed
-- Sets status reason to "Alarm(s) Cleared on Access" on Resolved and Closed steps
+- **User-selectable Closure Code** — choose the `u_status_reason` written at close (Repaired, Replaced, Patch / Upgrade, Customer or Third Party Action, Alarm(s) Cleared on Access, Change Request); same options as "Update Status → Closed". Default is "Alarm(s) Cleared on Access".
 - Logs effort time if specified
 
 ### How It Works
@@ -87,9 +87,9 @@ Required to fetch the user's Siebel backlog (open SRs and SRAs) from the OCD API
 
 Prepare the following screenshots at 1280x800 or 640x400:
 
-1. **List tab** — Shows "My Open Tickets" with ticket cards, state badges, stale highlighting, and inline action links
+1. **List tab** — Shows "My Open Tickets" with ticket cards, state badges, stale highlighting, sort/filter controls, and inline action links
 2. **Work Note tab** — Shows the note form with Work Note Type dropdown, effort time, and message input
-3. **Action tab** — Shows state dropdown, status reason, and the alarm quick-close section for an alarm INC
+3. **Action tab** — Shows state dropdown, status reason, the closure-code dropdown, and the alarm quick-close section for an alarm INC
 4. **Query tab** — Shows a ticket detail view with CI Remote Access, activity log, and inline actions
 5. **Siebel tab** — Shows the Siebel Backlog with SR/SRA cards and the manual note creation form
 
