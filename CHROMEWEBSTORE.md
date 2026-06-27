@@ -6,6 +6,7 @@
 - **Version:** 2.11
 - **Category:** Workflow & Planning
 - **Language:** English
+- **Privacy Policy URL:** https://avayahmao.github.io/SNOWSIEBEL/privacy-policy.html (hosted via GitHub Pages from this repo's root)
 
 ## Summary (132 chars max)
 
@@ -15,7 +16,7 @@ Manage ServiceNow tickets and Siebel activities from Chrome's sidebar using your
 
 SNOW + Siebel Ticket Manager is a Chrome sidebar extension for managing ServiceNow tickets and Siebel CRM activities directly in your browser. It uses your existing SSO sessions — no API tokens or separate login required.
 
-**Supported ticket types:** INC, CHG, PRB, RITM, REQ, TAS, SCT, STY, KB0
+The extension recognizes standard ServiceNow record types including incidents, changes, problems, requests, and tasks.
 
 ### ServiceNow Features
 
