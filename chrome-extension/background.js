@@ -39,15 +39,35 @@ async function findGctTab() {
   return tabs[0];
 }
 
-// Inject and execute in the page's MAIN world so we can access g_ck and session cookies
-async function injectAndExec(tabId, fn, args) {
-  // Step 1: inject snowFetch helper into the MAIN world
+const gctInjectedTabs = new Set();
+const snowInjectedTabs = new Set();
+
+// Set true during smoke testing to confirm the injection cache elides re-injection
+// (prove-the-skip). Remove/disable before release.
+const DEBUG_INJECT = false;
+
+// Inject content-snow.js into a tab's MAIN world once, then remember it.
+// Safe to cache because snowFetch() reads g_ck LIVE on every call
+// (content-snow.js:7) — it never captures the token at injection time, so a
+// rotated g_ck is picked up automatically and caching can't serve a stale one.
+// (The GCT twin below uses the same one-shot-per-tab pattern.)
+async function ensureSnowInjected(tabId) {
+  if (snowInjectedTabs.has(tabId)) {
+    if (DEBUG_INJECT) console.log("[inject] snow cache HIT tab", tabId);
+    return;
+  }
+  if (DEBUG_INJECT) console.log("[inject] snow INJECT tab", tabId);
   await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
     files: ["content-snow.js"],
   });
-  // Step 2: execute the function in the MAIN world
+  snowInjectedTabs.add(tabId);
+}
+
+// Inject and execute in the page's MAIN world so we can access g_ck and session cookies
+async function injectAndExec(tabId, fn, args) {
+  await ensureSnowInjected(tabId);
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
@@ -56,8 +76,6 @@ async function injectAndExec(tabId, fn, args) {
   });
   return results?.[0]?.result;
 }
-
-const gctInjectedTabs = new Set();
 
 async function injectAndExecGct(tabId, fn, args) {
   // Only inject content-gct.js once per tab
@@ -80,7 +98,29 @@ async function injectAndExecGct(tabId, fn, args) {
 }
 
 // Clean up injection tracking when tabs are closed
-chrome.tabs.onRemoved.addListener((tabId) => { gctInjectedTabs.delete(tabId); });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  gctInjectedTabs.delete(tabId);
+  snowInjectedTabs.delete(tabId);
+});
+
+// A hard reload (F5) tears down the page's MAIN world, so any cached snowFetch /
+// content-gct.js is gone — drop both sets on the NEXT top-level load so the
+// helper re-injects fresh. Filter on status === "loading" AND membership so this
+// is a no-op for unrelated tabs (the listener fires for every browser tab).
+//
+// NOTE: keep this to TOP-LEVEL loads only. tabs.onUpdated surfaces changeInfo.status
+// only for top-level navigations, not in-page iframes — SNOW's background frame
+// refreshes don't trip it, so the cache won't thrash. SPA route changes (open a
+// record, back to list) also don't surface "loading" and correctly keep the cache.
+// This fixes SNOW's reload-stale-cache failure mode AND GCT's latent twin (the GCT
+// path only self-invalidates inside its own nav functions at :128/:595, which an
+// F5 bypasses). Idempotent deletes — no interference with those deliberate clears.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading" && (snowInjectedTabs.has(tabId) || gctInjectedTabs.has(tabId))) {
+    snowInjectedTabs.delete(tabId);
+    gctInjectedTabs.delete(tabId);
+  }
+});
 
 // Helper: Wait for Siebel to be fully initialized after page load
 // Uses polling since fixed delays are unreliable — Siebel views load asynchronously
