@@ -715,19 +715,23 @@ async function handleMessage(msg) {
 
   if (msg.action === "getTicket") {
     const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
-    if (ticket && msg.includeJournal) {
-      const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
-      const journal = await injectAndExec(tab.id, getJournalInPage, [sysId, table]);
-      ticket._journal = journal;
-    }
-    if (ticket && msg.includeCi) {
-      const ciRef = ticket.cmdb_ci;
-      const ciSysId = (typeof ciRef === "object" && ciRef !== null) ? ciRef.value : ciRef;
-      if (ciSysId) {
-        const ciDetails = await injectAndExec(tab.id, getCiDetailsInPage, [ciSysId]);
-        ticket._ci = ciDetails;
-      }
-    }
+    if (!ticket) return null;
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    const ciRef = ticket.cmdb_ci;
+    const ciSysId = (typeof ciRef === "object" && ciRef !== null) ? ciRef.value : ciRef;
+    // Journal and CI both branch off `ticket` and never off each other, so fetch
+    // them in parallel. Each promise resolves a sentinel when its flag is off so
+    // Promise.all is well-formed; we assign under the original conditions below so
+    // the ticket gains no _journal/_ci properties absent today. (Promise.all, not
+    // allSettled — preserve "any fetch failure fails the whole action".)
+    const wantJournal = !!msg.includeJournal;
+    const wantCi = !!(msg.includeCi && ciSysId);
+    const [journal, ciDetails] = await Promise.all([
+      wantJournal ? injectAndExec(tab.id, getJournalInPage, [sysId, table]) : null,
+      wantCi ? injectAndExec(tab.id, getCiDetailsInPage, [ciSysId]) : null,
+    ]);
+    if (wantJournal) ticket._journal = journal;
+    if (wantCi) ticket._ci = ciDetails;
     return ticket;
   }
 
