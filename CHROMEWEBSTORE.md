@@ -62,7 +62,7 @@ Alarm-generated INCs (detected by contact_type = Alarm) get a purple "Alarm" bad
 
 ### Privacy
 
-This extension runs entirely in your browser. It does not collect, store, or transmit any personal data to external servers. All communication happens directly between your browser and your organization's ServiceNow (avaya.service-now.com), Siebel CRM (gct.avaya.com), and OCD (ocd.avaya.com) instances using your existing authenticated sessions.
+This extension runs entirely in your browser. It does not collect, store, or transmit any personal data to external servers. All communication happens directly between your browser and your organization's ServiceNow (avaya.service-now.com), Siebel CRM (gct.avaya.com), and OCD (ocd.avaya.com) instances using your existing authenticated sessions. Full policy: https://avayahmao.github.io/SNOWSIEBEL/privacy-policy.html
 
 ## Permission Justifications
 

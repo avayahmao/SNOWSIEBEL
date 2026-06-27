@@ -110,3 +110,7 @@ ServiceNow returns journal fields as concatenated text where each entry has a he
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## Privacy
+
+This extension runs entirely in your browser and does not collect, store, or transmit any personal data to external servers. See the full [Privacy Policy](https://avayahmao.github.io/SNOWSIEBEL/privacy-policy.html).
