@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Privacy Policy — SNOW Ticket Manager</title>
+<title>Privacy Policy — SNOW + Siebel Ticket Manager</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.6; }
   h1 { color: #1a73e8; }
@@ -14,28 +14,58 @@
 <body>
 
 <h1>Privacy Policy for SNOW + Siebel Ticket Manager</h1>
-<p class="last-updated">Last updated: May 28, 2026</p>
+<p class="last-updated">Last updated: June 27, 2026</p>
 
 <h2>Overview</h2>
-<p>SNOW + Siebel Ticket Manager is a Chrome browser extension that provides a sidebar interface for managing ServiceNow tickets and Siebel CRM activities. This privacy policy describes how the extension handles data.</p>
+<p>SNOW + Siebel Ticket Manager is a Chrome browser extension that provides a sidebar interface for managing ServiceNow tickets and Siebel CRM activities. This privacy policy describes in full how the extension collects, processes, stores, and shares user data.</p>
 
-<h2>Data Collection</h2>
-<p><strong>This extension does not collect, store, or transmit any personal data to external servers.</strong></p>
+<p><strong>Short version:</strong> This extension does <strong>not</strong> collect, sell, share, or transmit any personal data to the developer or any third party. It only displays data that already belongs to the user's own organization (Avaya), retrieved live from the organization's own servers using the user's own browser session, and it is never persisted outside the browser. The details below satisfy the Chrome Web Store requirement to disclose each of these points explicitly.</p>
 
-<h2>Data Usage</h2>
-<p>The extension communicates with the user's own organization servers to perform the following actions:</p>
+<h2>1. Data Collection</h2>
+<p>The extension <strong>does not collect any personal or sensitive user data</strong>. No analytics, telemetry, crash reporting, or usage tracking is present. The only data the extension touches is data that already exists in the user's organization-owned systems (ServiceNow tickets, Siebel activities), and it is read on demand only when the user performs an action in the sidebar.</p>
+<p>For completeness, the data the extension displays or submits (always at the user's explicit request) is:</p>
 <ul>
-  <li><strong>ServiceNow</strong> (<code>avaya.service-now.com</code>) — Read ticket lists and details, add work notes, update ticket status, query tickets by number</li>
-  <li><strong>Siebel CRM</strong> (<code>gct.avaya.com</code>) — Create activity records on Service Requests using the Siebel JavaScript API</li>
-  <li><strong>OCD API</strong> (<code>ocd.avaya.com</code>) — Fetch the user's Siebel backlog (open SRs and SRAs) for display in the sidebar</li>
+  <li><strong>ServiceNow ticket data</strong> — ticket numbers, descriptions, state, priority, assignment, journal (work notes/comments), and CI remote-access info (IP addresses, SE IDs, device credentials) for tickets the user opens or searches.</li>
+  <li><strong>Siebel CRM data</strong> — Service Request / Activity numbers used to open or create activities in Siebel.</li>
+  <li><strong>OCD API data</strong> — the user's open Siebel backlog (SRs/SRAs) for sidebar display.</li>
+  <li><strong>Local preferences</strong> — the List-tab sort selection (key + direction), stored in the browser's <code>localStorage</code>. No ticket data is stored.</li>
 </ul>
-<p>All communication uses the user's existing browser SSO sessions. No separate credentials, API tokens, or login information is collected from the user.</p>
 
-<h2>Data Storage</h2>
-<p>The extension does not store any user data outside the browser. No data is written to external databases, analytics services, or third-party servers.</p>
+<h2>2. How Data Is Used (Processing)</h2>
+<p>All processing happens locally, inside the user's browser:</p>
+<ul>
+  <li>The sidebar UI (<code>panel.js</code>) renders ticket/backlog data to the screen and builds the forms the user submits.</li>
+  <li>The service worker (<code>background.js</code>) routes user actions and injects helpers into the already-open ServiceNow / Siebel tabs.</li>
+  <li>The injected helpers (<code>content-snow.js</code>, <code>content-gct.js</code>) read the page's existing session token (<code>g_ck</code>) and cookies to call the organization's REST/JS APIs — exactly as the user could do manually in those tabs.</li>
+  <li>Journal (work notes/comments) and markdown-export content is parsed in the browser from data already returned by the organization's API; no external parsing or AI processing occurs.</li>
+</ul>
+<p>No data is processed on any developer-controlled server. There is no developer backend.</p>
 
-<h2>Third-Party Services</h2>
-<p>This extension does not communicate with any third-party services, analytics, or tracking tools. It communicates only with the organization's own ServiceNow, Siebel CRM, and OCD servers as listed above.</p>
+<h2>3. Data Storage</h2>
+<ul>
+  <li><strong>Nothing is written to external databases, clouds, analytics, or third-party servers.</strong> The developer operates no server that receives extension data.</li>
+  <li><strong>Browser-local storage</strong> — only the List-tab sort preference is saved (in <code>localStorage</code>, scoped to the extension). It contains no personal or ticket data.</li>
+  <li><strong>No persistent storage of ticket data</strong> — all ticket/backlog/credential data shown in the UI is fetched fresh on each action and held only in memory for the duration of the view. It is discarded when the sidebar closes or reloads.</li>
+  <li>Device credentials (IP, SE ID, passwords) shown on ticket cards are fetched on demand and never written to disk.</li>
+</ul>
+
+<h2>4. Data Sharing</h2>
+<p><strong>The extension does not share data with any third party.</strong> Specifically:</p>
+<ul>
+  <li>It does not transmit data to the developer or any developer-owned service.</li>
+  <li>It does not use advertising, analytics, or tracking SDKs.</li>
+  <li>It does not sell, rent, or barter data.</li>
+</ul>
+<p>The only data movement is between the user's browser and the user's <strong>own organization's servers</strong>, over the user's existing authenticated sessions — the same endpoints the user visits directly:</p>
+<ul>
+  <li><strong>ServiceNow</strong> (<code>avaya.service-now.com</code>) — read ticket lists/details/journal; submit work notes, status updates, and alarm closures.</li>
+  <li><strong>Siebel CRM</strong> (<code>gct.avaya.com</code>) — create activity records on Service Requests via the Siebel JavaScript API.</li>
+  <li><strong>OCD API</strong> (<code>ocd.avaya.com</code>) — fetch the user's Siebel backlog for sidebar display.</li>
+</ul>
+<p>These are first-party (organization-owned) endpoints, not third parties. No data leaves the Avaya corporate environment.</p>
+
+<h2>5. Authentication</h2>
+<p>All communication uses the user's existing browser SSO sessions. The extension <strong>does not collect, prompt for, or store any credentials, passwords, or API tokens</strong>. The ServiceNow <code>g_ck</code> CSRF token is read live from the page context at call time and never persisted or transmitted anywhere except back to ServiceNow as the required request header.</p>
 
 <h2>Permissions</h2>
 <ul>
@@ -53,6 +83,15 @@
 
 <h2>Remote Code</h2>
 <p>This extension does not load or execute any remotely hosted code. All code is bundled within the extension package.</p>
+
+<h2>Data Retention &amp; Deletion</h2>
+<p>Because no data is collected or stored by the extension or developer, there is nothing to retain or delete on the developer's side. The only locally stored item (the sort preference) can be cleared by uninstalling the extension or clearing site data. Ticket data shown in the UI is governed by the organization's own retention policies in ServiceNow/Siebel, not by this extension.</p>
+
+<h2>Children's Data</h2>
+<p>This extension is an enterprise workplace tool and is not directed at children. It does not knowingly collect any data from anyone.</p>
+
+<h2>User Rights</h2>
+<p>Since the extension collects no personal data and shares nothing with third parties, the usual access/rectification/erasure rights are satisfied by design: no personal data about the user exists outside the organization's own systems, where it is governed by the organization's policies. The sort preference can be cleared at any time.</p>
 
 <h2>Changes to This Policy</h2>
 <p>This privacy policy may be updated if the extension's functionality changes. Any updates will be reflected on this page with a revised "Last updated" date.</p>

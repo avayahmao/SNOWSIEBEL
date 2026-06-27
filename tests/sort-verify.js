@@ -103,5 +103,99 @@ items.forEach(i => {
   console.log("  ", i.num, i.sev, "stale:", days + "d");
 });
 
+// --- Local copies of helpers used by compareTickets (test is self-contained) ---
+// displayVal/parsePriority/staleDays already defined above (lines 2-25).
+function parseUpdatedOn(value) {
+  const dv = displayVal(value);
+  if (!dv) return null;
+  const d = new Date(dv);
+  return isNaN(d.getTime()) ? null : d;
+}
+// valueVal: like displayVal but prefers .value. For state, display_value is a
+// localized label ("New") and the numeric code lives in .value — displayVal()
+// would parseInt("New")→NaN→0. (Caught by the compareTickets characterization test.)
+function valueVal(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "object") return v.value || v.display_value || "";
+  return String(v);
+}
+function compareTickets(a, b, key, dir) {
+  const mult = dir === "desc" ? -1 : 1;
+  if (key === "id") {
+    const ma = (displayVal(a.number) || "").match(/(\d+)$/);
+    const mb = (displayVal(b.number) || "").match(/(\d+)$/);
+    const na = ma ? parseInt(ma[1], 10) : 0;
+    const nb = mb ? parseInt(mb[1], 10) : 0;
+    return (na - nb) * mult;
+  }
+  if (key === "priority") {
+    const pa = parsePriority(a.priority), pb = parsePriority(b.priority);
+    if (pa !== pb) return (pa - pb) * mult;
+    return staleDays(b.sys_updated_on) - staleDays(a.sys_updated_on); // tiebreak: stale desc
+  }
+  if (key === "stale") {
+    const sa = staleDays(a.sys_updated_on), sb = staleDays(b.sys_updated_on);
+    if (sa !== sb) return (sa - sb) * mult;
+    return parsePriority(a.priority) - parsePriority(b.priority); // tiebreak: priority asc
+  }
+  if (key === "updated") {
+    const ta = parseUpdatedOn(a.sys_updated_on), tb = parseUpdatedOn(b.sys_updated_on);
+    const va = ta ? ta.getTime() : 0, vb = tb ? tb.getTime() : 0;
+    if (va !== vb) return (va - vb) * mult;
+    return cmpIdDesc(a, b); // tiebreak: id desc
+  }
+  if (key === "created") {
+    const ta = parseUpdatedOn(a.sys_created_on), tb = parseUpdatedOn(b.sys_created_on);
+    const va = ta ? ta.getTime() : 0, vb = tb ? tb.getTime() : 0;
+    if (va !== vb) return (va - vb) * mult;
+    return cmpIdDesc(a, b); // tiebreak: id desc
+  }
+  if (key === "state") {
+    const sa = parseInt(valueVal(a.state), 10) || 0;
+    const sb = parseInt(valueVal(b.state), 10) || 0;
+    if (sa !== sb) return (sa - sb) * mult;
+    return parsePriority(a.priority) - parsePriority(b.priority); // tiebreak: priority asc
+  }
+  return 0;
+}
+// id-desc tiebreak helper (used by updated/created) — byte-identical to panel.js copy
+function cmpIdDesc(a, b) {
+  const ma = (displayVal(a.number) || "").match(/(\d+)$/);
+  const mb = (displayVal(b.number) || "").match(/(\d+)$/);
+  const na = ma ? parseInt(ma[1], 10) : 0;
+  const nb = mb ? parseInt(mb[1], 10) : 0;
+  return nb - na;
+}
+
+// --- compareTickets tests ---
+console.log("\n=== compareTickets ===");
+const ctTickets = [
+  { number: "INC0010", priority: "3 - Moderate", sys_updated_on: "2026-05-10", sys_created_on: "2026-04-01", state: { value: "1", display_value: "New" } },
+  { number: "INC0002", priority: "1 - Critical", sys_updated_on: "2026-05-27", sys_created_on: "2026-05-20", state: { value: "2", display_value: "In Progress" } },
+  { number: "INC0007", priority: "1 - Critical", sys_updated_on: "2026-05-15", sys_created_on: "2026-05-01", state: { value: "7", display_value: "Closed" } },
+];
+function sortedNums(key, dir) {
+  return ctTickets.slice().sort((a, b) => compareTickets(a, b, key, dir)).map(t => displayVal(t.number));
+}
+const ctCases = [
+  ["id asc",      ["INC0002", "INC0007", "INC0010"], sortedNums("id", "asc")],
+  ["id desc",     ["INC0010", "INC0007", "INC0002"], sortedNums("id", "desc")],
+  ["priority asc (P1s first, INC0002 newer-stale than INC0007)", ["INC0007", "INC0002", "INC0010"], sortedNums("priority", "asc")],
+  ["priority desc", ["INC0010", "INC0007", "INC0002"], sortedNums("priority", "desc")],
+  ["stale asc (INC0002 least stale)", ["INC0002", "INC0007", "INC0010"], sortedNums("stale", "asc")],
+  ["stale desc (INC0010 stalest)", ["INC0010", "INC0007", "INC0002"], sortedNums("stale", "desc")],
+  ["updated asc (oldest first)", ["INC0010", "INC0007", "INC0002"], sortedNums("updated", "asc")],
+  ["updated desc (newest first)", ["INC0002", "INC0007", "INC0010"], sortedNums("updated", "desc")],
+  ["created asc (oldest first)", ["INC0010", "INC0007", "INC0002"], sortedNums("created", "asc")],
+  ["created desc (newest first)", ["INC0002", "INC0007", "INC0010"], sortedNums("created", "desc")],
+  ["state asc (1 before 2 before 7)", ["INC0010", "INC0002", "INC0007"], sortedNums("state", "asc")],
+  ["state desc", ["INC0007", "INC0002", "INC0010"], sortedNums("state", "desc")],
+];
+for (const [label, expected, got] of ctCases) {
+  const ok = JSON.stringify(got) === JSON.stringify(expected);
+  if (ok) pass++; else fail++;
+  console.log(ok ? "PASS" : "FAIL", label, "=>", got.join(", "), ok ? "" : "(expected " + expected.join(", ") + ")");
+}
+
 console.log("\n=== Results: " + pass + " passed, " + fail + " failed ===");
 process.exit(fail > 0 ? 1 : 0);

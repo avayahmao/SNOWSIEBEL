@@ -39,15 +39,27 @@ async function findGctTab() {
   return tabs[0];
 }
 
-// Inject and execute in the page's MAIN world so we can access g_ck and session cookies
-async function injectAndExec(tabId, fn, args) {
-  // Step 1: inject snowFetch helper into the MAIN world
+const gctInjectedTabs = new Set();
+const snowInjectedTabs = new Set();
+
+// Inject content-snow.js into a tab's MAIN world once, then remember it.
+// Safe to cache because snowFetch() reads g_ck LIVE on every call
+// (content-snow.js:7) — it never captures the token at injection time, so a
+// rotated g_ck is picked up automatically and caching can't serve a stale one.
+// (The GCT twin below uses the same one-shot-per-tab pattern.)
+async function ensureSnowInjected(tabId) {
+  if (snowInjectedTabs.has(tabId)) return;
   await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
     files: ["content-snow.js"],
   });
-  // Step 2: execute the function in the MAIN world
+  snowInjectedTabs.add(tabId);
+}
+
+// Inject and execute in the page's MAIN world so we can access g_ck and session cookies
+async function injectAndExec(tabId, fn, args) {
+  await ensureSnowInjected(tabId);
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
@@ -56,8 +68,6 @@ async function injectAndExec(tabId, fn, args) {
   });
   return results?.[0]?.result;
 }
-
-const gctInjectedTabs = new Set();
 
 async function injectAndExecGct(tabId, fn, args) {
   // Only inject content-gct.js once per tab
@@ -80,7 +90,29 @@ async function injectAndExecGct(tabId, fn, args) {
 }
 
 // Clean up injection tracking when tabs are closed
-chrome.tabs.onRemoved.addListener((tabId) => { gctInjectedTabs.delete(tabId); });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  gctInjectedTabs.delete(tabId);
+  snowInjectedTabs.delete(tabId);
+});
+
+// A hard reload (F5) tears down the page's MAIN world, so any cached snowFetch /
+// content-gct.js is gone — drop both sets on the NEXT top-level load so the
+// helper re-injects fresh. Filter on status === "loading" AND membership so this
+// is a no-op for unrelated tabs (the listener fires for every browser tab).
+//
+// NOTE: keep this to TOP-LEVEL loads only. tabs.onUpdated surfaces changeInfo.status
+// only for top-level navigations, not in-page iframes — SNOW's background frame
+// refreshes don't trip it, so the cache won't thrash. SPA route changes (open a
+// record, back to list) also don't surface "loading" and correctly keep the cache.
+// This fixes SNOW's reload-stale-cache failure mode AND GCT's latent twin (the GCT
+// path only self-invalidates inside its own nav functions at :128/:595, which an
+// F5 bypasses). Idempotent deletes — no interference with those deliberate clears.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading" && (snowInjectedTabs.has(tabId) || gctInjectedTabs.has(tabId))) {
+    snowInjectedTabs.delete(tabId);
+    gctInjectedTabs.delete(tabId);
+  }
+});
 
 // Helper: Wait for Siebel to be fully initialized after page load
 // Uses polling since fixed delays are unreliable — Siebel views load asynchronously
@@ -249,6 +281,7 @@ function getNoteTypesInPage() {
     });
 }
 
+
 function getTicketInPage(table, ticketNumber) {
   return snowFetch("GET", "/api/now/table/" + table + "?sysparm_query=number=" + ticketNumber + "&sysparm_limit=1&sysparm_display_value=all")
     .then(function(d) { return d.result && d.result[0] ? d.result[0] : null; });
@@ -256,7 +289,7 @@ function getTicketInPage(table, ticketNumber) {
 
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
-params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,contact_type,cmdb_ci");
+params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,sys_created_on,contact_type,cmdb_ci");
   // URLSearchParams encodes spaces as '+' (form-encoding), but ServiceNow's
   // sysparm_query parser expects '%20'. A literal '+' in a query value (e.g. the
   // group name "Avaya Infinity Platform" in the Infinity preset) is not decoded
@@ -674,27 +707,38 @@ async function handleMessage(msg) {
 
   if (msg.action === "getTicket") {
     const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
-    if (ticket && msg.includeJournal) {
-      const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
-      const journal = await injectAndExec(tab.id, getJournalInPage, [sysId, table]);
-      ticket._journal = journal;
-    }
-    if (ticket && msg.includeCi) {
-      const ciRef = ticket.cmdb_ci;
-      const ciSysId = (typeof ciRef === "object" && ciRef !== null) ? ciRef.value : ciRef;
-      if (ciSysId) {
-        const ciDetails = await injectAndExec(tab.id, getCiDetailsInPage, [ciSysId]);
-        ticket._ci = ciDetails;
-      }
-    }
+    if (!ticket) return null;
+    const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
+    const ciRef = ticket.cmdb_ci;
+    const ciSysId = (typeof ciRef === "object" && ciRef !== null) ? ciRef.value : ciRef;
+    // Journal and CI both branch off `ticket` and never off each other, so fetch
+    // them in parallel. Each promise resolves a sentinel when its flag is off so
+    // Promise.all is well-formed; we assign under the original conditions below so
+    // the ticket gains no _journal/_ci properties absent today. (Promise.all, not
+    // allSettled — preserve "any fetch failure fails the whole action".)
+    const wantJournal = !!msg.includeJournal;
+    const wantCi = !!(msg.includeCi && ciSysId);
+    const [journal, ciDetails] = await Promise.all([
+      wantJournal ? injectAndExec(tab.id, getJournalInPage, [sysId, table]) : null,
+      wantCi ? injectAndExec(tab.id, getCiDetailsInPage, [ciSysId]) : null,
+    ]);
+    if (wantJournal) ticket._journal = journal;
+    if (wantCi) ticket._ci = ciDetails;
     return ticket;
   }
 
   if (msg.action === "takeTicket") {
-    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    // getUserId doesn't depend on the ticket, so fetch both in parallel. Pre-warm
+    // the injection cache first so the two parallel injectAndExec calls don't both
+    // inject content-snow.js on a cold tab (harmless if they did — idempotent —
+    // but this avoids the redundant inject).
+    await ensureSnowInjected(tab.id);
+    const [ticket, userId] = await Promise.all([
+      injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]),
+      injectAndExec(tab.id, getUserIdInPage, []),
+    ]);
     if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
     const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
-    const userId = await injectAndExec(tab.id, getUserIdInPage, []);
     if (!userId) throw new Error("Could not determine current user");
     const result = await injectAndExec(tab.id, updateBySysIdInPage, [
       table, sysId, { assigned_to: userId, state: "2" }
@@ -787,7 +831,7 @@ async function handleMessage(msg) {
       const stepLabel = labels[targetState] || targetState;
       const fields = { state: targetState };
       if (targetState === "6" || targetState === "7") {
-        fields.u_status_reason = "Alarm(s) Cleared on Access";
+        fields.u_status_reason = msg.statusReason || "Alarm(s) Cleared on Access";
       }
       if (targetState === "7") {
         fields.work_notes = msg.note;

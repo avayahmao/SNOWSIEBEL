@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.11] - 2026-06-27
+
+### Added
+- **List sort control** — New "Sort" + "Order" dropdowns in the List tab toolbar. Sort by Case ID, Priority, Stale days, Last updated, Created, or State; Ascending or Descending. Selection persists across sessions (`snow_list_sort_key` / `snow_list_sort_dir` in localStorage). `compareTickets()` replaces the old hardcoded priority→stale order.
+- **Closure Code on alarm close** — The `u_status_reason` field is now a user-selectable dropdown on both alarm-close surfaces (Action tab and inline List form), offering the same option list as "Update Status → Closed" (sourced from the per-table state config: Repaired, Replaced, Patch / Upgrade, Customer or Third Party Action, Alarm(s) Cleared on Access, Change Request). Default remains "Alarm(s) Cleared on Access" for unchanged behavior.
+
+### Changed
+- **Default List sort is now Case ID descending (new on top).** Previously the List auto-loaded with priority-first/stalest-first ordering. Existing users who relied on the P1-first startup view should switch the Sort dropdown to "Priority" — the choice then persists. (Design P1.)
+- `listTicketsInPage` default fields now include `sys_created_on` (enables the Created sort; one extra field on an already-returned record, no extra request).
+
+### Fixed
+- **State sort bug** (found during implementation): the original design routed the state comparator through `displayVal()`, which returns the localized label (e.g. "New") rather than the numeric code, so `parseInt("New")` → `NaN` → every state compared equal and "sort by state" silently no-op'd. Fixed by adding a `valueVal()` helper that prefers `.value`; the state branch now uses it. The other five keys were unaffected (their display values embed the sort value).
+
+### Performance
+- **Per-tab SNOW helper injection cache** — `injectAndExec` previously re-injected `content-snow.js` on every call (two `chrome.scripting.executeScript` round-trips per operation); the GCT path already cached this. Now `ensureSnowInjected()` injects once per tab. Safe because `snowFetch()` reads the `g_ck` token live on every call, so caching can never serve a rotated token. Every operation now does one round-trip instead of two — roughly halving browser IPC on the hot path (search, list, take, alarm-close). A global `tabs.onUpdated` listener clears the cache on a top-level reload (`F5`) for both SNOW and GCT, fixing a latent stale-cache bug where a hard reload would tear down the page's MAIN world but leave the helper marked injected.
+- **Parallel journal + CI fetch in `getTicket`** — Query-tab search previously fetched the journal then CI sequentially; they're independent and now run in parallel (`Promise.all`).
+- **Parallel ticket + user fetch in `takeTicket`** — the "Take" action previously fetched the ticket then the current user sequentially; the user lookup is independent and now runs in parallel.
+
+### Notes
+- The Closure Code dropdown originally targeted a dynamic `sys_choice` fetch (`element=u_status_reason^nameINincident,task`, mirroring the Work Note Types pattern). The smoke test confirmed design risk **R2**: that query returns nothing on this instance, so the dropdown silently fell back to a single value. The dynamic fetch was removed; options now come from the same hardcoded per-table state config (`TABLE_STATES.incident.reasons["7"]`) that the existing "Update Status → Closed" dropdown already uses — which is why that flow works where the fetch didn't. The `-- None --` entry is omitted from the closure dropdown (the alarm-close chain writes a real `u_status_reason`).
+
 ## [2.10] - 2026-06-22
 
 ### Added
