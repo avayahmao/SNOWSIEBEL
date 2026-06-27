@@ -736,10 +736,17 @@ async function handleMessage(msg) {
   }
 
   if (msg.action === "takeTicket") {
-    const ticket = await injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]);
+    // getUserId doesn't depend on the ticket, so fetch both in parallel. Pre-warm
+    // the injection cache first so the two parallel injectAndExec calls don't both
+    // inject content-snow.js on a cold tab (harmless if they did — idempotent —
+    // but this avoids the redundant inject).
+    await ensureSnowInjected(tab.id);
+    const [ticket, userId] = await Promise.all([
+      injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]),
+      injectAndExec(tab.id, getUserIdInPage, []),
+    ]);
     if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
     const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
-    const userId = await injectAndExec(tab.id, getUserIdInPage, []);
     if (!userId) throw new Error("Could not determine current user");
     const result = await injectAndExec(tab.id, updateBySysIdInPage, [
       table, sysId, { assigned_to: userId, state: "2" }
