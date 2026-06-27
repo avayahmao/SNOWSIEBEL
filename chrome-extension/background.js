@@ -42,21 +42,13 @@ async function findGctTab() {
 const gctInjectedTabs = new Set();
 const snowInjectedTabs = new Set();
 
-// Set true during smoke testing to confirm the injection cache elides re-injection
-// (prove-the-skip). Remove/disable before release.
-const DEBUG_INJECT = false;
-
 // Inject content-snow.js into a tab's MAIN world once, then remember it.
 // Safe to cache because snowFetch() reads g_ck LIVE on every call
 // (content-snow.js:7) — it never captures the token at injection time, so a
 // rotated g_ck is picked up automatically and caching can't serve a stale one.
 // (The GCT twin below uses the same one-shot-per-tab pattern.)
 async function ensureSnowInjected(tabId) {
-  if (snowInjectedTabs.has(tabId)) {
-    if (DEBUG_INJECT) console.log("[inject] snow cache HIT tab", tabId);
-    return;
-  }
-  if (DEBUG_INJECT) console.log("[inject] snow INJECT tab", tabId);
+  if (snowInjectedTabs.has(tabId)) return;
   await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
