@@ -208,6 +208,29 @@ function buildNoteTypeOptions(selectedValue) {
   return html;
 }
 
+// Closure-code options for alarm-close (u_status_reason). Sourced from the same
+// hardcoded TABLE_STATES config the "Update Status → Closed" dropdown uses
+// (incident reasons[7] = Closed), NOT a live sys_choice fetch — that fetch
+// (element=u_status_reason^nameINincident,task) returned nothing on this instance
+// (design R2 gate failed at the smoke test). The config list is the verified
+// source. "-- None --" is omitted: the alarm-close chain writes a real
+// u_status_reason, so a None value would store junk or be rejected.
+function buildStatusReasonOptions(selectedValue) {
+  var CLOSED_STATE = "7";
+  var FALLBACK = ["Alarm(s) Cleared on Access"];
+  var cfg = getStateConfig("incident");
+  var raw = (cfg && cfg.reasons && cfg.reasons[CLOSED_STATE]) ? cfg.reasons[CLOSED_STATE] : FALLBACK;
+  var src = raw.filter(function(v) { return v && v !== "-- None --"; });
+  if (src.length === 0) src = FALLBACK.slice();
+  var html = '';
+  for (var i = 0; i < src.length; i++) {
+    var v = src[i];
+    var isSel = (v === selectedValue);
+    html += '<option value="' + esc(v) + '"' + (isSel ? ' selected' : '') + '>' + esc(v) + '</option>';
+  }
+  return html;
+}
+
 function stateBadge(state, table) {
   const cfg = getStateConfig(table || "incident");
   const dv = displayVal(state);
@@ -276,6 +299,69 @@ function parsePriority(value) {
   const dv = displayVal(value);
   const m = dv.match(/^(\d+)/);
   return m ? parseInt(m[1], 10) : 99; // unknown priority sorts last
+}
+
+// valueVal: like displayVal but prefers .value. For state, display_value is a
+// localized label ("New") and the numeric code lives in .value — displayVal()
+// would parseInt("New")→NaN→0, so the state sort silently no-ops'd. (Caught by
+// the compareTickets characterization test in tests/sort-verify.js.)
+function valueVal(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "object") return v.value || v.display_value || "";
+  return String(v);
+}
+
+// Compare two tickets for the List sort. `key` ∈ id/priority/stale/updated/created/state;
+// `dir` ∈ asc/desc. All field access via displayVal/valueVal/parseUpdatedOn (the query
+// uses sysparm_display_value=all, so fields arrive as {value, display_value} objects —
+// raw Date.parse would NaN). Tiebreaks are fixed-direction per the design.
+// Byte-identical (minus this preamble) to the reference copy in tests/sort-verify.js.
+function compareTickets(a, b, key, dir) {
+  const mult = dir === "desc" ? -1 : 1;
+  if (key === "id") {
+    const ma = (displayVal(a.number) || "").match(/(\d+)$/);
+    const mb = (displayVal(b.number) || "").match(/(\d+)$/);
+    const na = ma ? parseInt(ma[1], 10) : 0;
+    const nb = mb ? parseInt(mb[1], 10) : 0;
+    return (na - nb) * mult;
+  }
+  if (key === "priority") {
+    const pa = parsePriority(a.priority), pb = parsePriority(b.priority);
+    if (pa !== pb) return (pa - pb) * mult;
+    return staleDays(b.sys_updated_on) - staleDays(a.sys_updated_on); // tiebreak: stale desc
+  }
+  if (key === "stale") {
+    const sa = staleDays(a.sys_updated_on), sb = staleDays(b.sys_updated_on);
+    if (sa !== sb) return (sa - sb) * mult;
+    return parsePriority(a.priority) - parsePriority(b.priority); // tiebreak: priority asc
+  }
+  if (key === "updated") {
+    const ta = parseUpdatedOn(a.sys_updated_on), tb = parseUpdatedOn(b.sys_updated_on);
+    const va = ta ? ta.getTime() : 0, vb = tb ? tb.getTime() : 0;
+    if (va !== vb) return (va - vb) * mult;
+    return cmpIdDesc(a, b); // tiebreak: id desc
+  }
+  if (key === "created") {
+    const ta = parseUpdatedOn(a.sys_created_on), tb = parseUpdatedOn(b.sys_created_on);
+    const va = ta ? ta.getTime() : 0, vb = tb ? tb.getTime() : 0;
+    if (va !== vb) return (va - vb) * mult;
+    return cmpIdDesc(a, b); // tiebreak: id desc
+  }
+  if (key === "state") {
+    const sa = parseInt(valueVal(a.state), 10) || 0;
+    const sb = parseInt(valueVal(b.state), 10) || 0;
+    if (sa !== sb) return (sa - sb) * mult;
+    return parsePriority(a.priority) - parsePriority(b.priority); // tiebreak: priority asc
+  }
+  return 0;
+}
+// id-desc tiebreak helper (used by updated/created)
+function cmpIdDesc(a, b) {
+  const ma = (displayVal(a.number) || "").match(/(\d+)$/);
+  const mb = (displayVal(b.number) || "").match(/(\d+)$/);
+  const na = ma ? parseInt(ma[1], 10) : 0;
+  const nb = mb ? parseInt(mb[1], 10) : 0;
+  return nb - na;
 }
 
 // Siebel severity rank: OTG(0) > SBI(1) > BI(2) > NBI(3); unknown sorts last
@@ -884,6 +970,10 @@ document.addEventListener("click", (e) => {
       + '<option value="False alarm confirmed. No further action required.">False alarm confirmed</option>'
       + '<option value="">Custom</option>'
       + '</select></div>'
+      + '<div style="margin-bottom:4px"><label>Closure Code</label>'
+      + '<select class="alarm-reason-select" data-form="' + formId + '">'
+      +   buildStatusReasonOptions("Alarm(s) Cleared on Access")
+      + '</select></div>'
       + '<div style="margin-bottom:4px"><label>Close Note</label>'
       + '<textarea class="alarm-note-input" data-form="' + formId + '" rows="6">' + esc(defaultTmpl) + '</textarea></div>'
       + '<div class="effort-row">'
@@ -906,6 +996,7 @@ document.addEventListener("click", (e) => {
     const noteInput = form ? form.querySelector(".alarm-note-input") : null;
     const effortInput = form ? form.querySelector(".alarm-effort-input") : null;
     const effortUnitEl = form ? form.querySelector(".alarm-effort-unit") : null;
+    const reasonSel = form ? form.querySelector(".alarm-reason-select") : null;
     const note = noteInput ? noteInput.value.trim() : "";
     if (!note) {
       if (noteInput) noteInput.style.borderColor = "var(--danger)";
@@ -922,7 +1013,8 @@ document.addEventListener("click", (e) => {
     const btn = e.target;
     btn.disabled = true;
     btn.textContent = "Closing...";
-    send({ action: "alarmClose", ticketNumber: ticket, note, effortMinutes })
+    const statusReason = reasonSel ? reasonSel.value : "";
+    send({ action: "alarmClose", ticketNumber: ticket, note, effortMinutes, statusReason })
       .then((data) => {
         btn.disabled = false;
         btn.textContent = "Close Alarm";
@@ -1080,6 +1172,17 @@ const PRESETS = {
   "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ",
 };
 
+// Restore saved List sort selections; default = Case ID desc (new on top)
+function restoreListSort() {
+  const keySel = document.getElementById("list-sort-key");
+  const dirSel = document.getElementById("list-sort-dir");
+  if (!keySel || !dirSel) return;
+  keySel.value = localStorage.getItem("snow_list_sort_key") || "id";
+  dirSel.value = localStorage.getItem("snow_list_sort_dir") || "desc";
+  keySel.addEventListener("change", () => localStorage.setItem("snow_list_sort_key", keySel.value));
+  dirSel.addEventListener("change", () => localStorage.setItem("snow_list_sort_dir", dirSel.value));
+}
+
 document.getElementById("list-preset").addEventListener("change", (e) => {
   const preset = e.target.value;
   if (preset && PRESETS[preset]) {
@@ -1099,15 +1202,12 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
-    // Sort: priority ascending (P1 first), then stale days descending (stalest first)
-    tickets.sort((a, b) => {
-      const pa = parsePriority(a.priority);
-      const pb = parsePriority(b.priority);
-      if (pa !== pb) return pa - pb;
-      const sa = staleDays(a.sys_updated_on);
-      const sb = staleDays(b.sys_updated_on);
-      return sb - sa;
-    });
+    // Sort: user-selected key + direction (default Case ID desc). Comparator
+    // routes all field access through displayVal/valueVal/parseUpdatedOn so the
+    // {value, display_value} objects from sysparm_display_value=all don't NaN.
+    const sortKey = document.getElementById("list-sort-key").value;
+    const sortDir = document.getElementById("list-sort-dir").value;
+    tickets.sort((a, b) => compareTickets(a, b, sortKey, sortDir));
     if (!tickets.length) {
       listResult.innerHTML = '<div class="ticket-field" style="padding:8px">No tickets found</div>';
       return;
@@ -1311,7 +1411,8 @@ document.getElementById("btn-alarm-close").addEventListener("click", async () =>
     }
   }
   try {
-    const data = await send({ action: "alarmClose", ticketNumber: number, note, effortMinutes });
+    const statusReason = document.getElementById("alarm-reason").value;
+    const data = await send({ action: "alarmClose", ticketNumber: number, note, effortMinutes, statusReason });
     // Show step-by-step progress
     let html = "";
     for (let i = 0; i < data.steps.length; i++) {
@@ -1435,6 +1536,11 @@ document.getElementById("btn-update").addEventListener("click", async () => {
 
 // --- Load note types from SNOW ---
 loadNoteTypes();
+// --- Restore saved List sort selection (default: Case ID desc) ---
+restoreListSort();
+// --- Render closure-code options (sourced from TABLE_STATES, same as Update Status → Closed) ---
+var ar = document.getElementById("alarm-reason");
+if (ar) ar.innerHTML = buildStatusReasonOptions("Alarm(s) Cleared on Access");
 
 // --- Auto-load My Open Tickets on startup (List is default tab) ---
 listAutoLoaded = true;

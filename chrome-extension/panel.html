@@ -450,6 +450,26 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
       <input id="list-limit" type="number" value="50" min="1" max="100">
     </div>
   </div>
+  <div class="row-2">
+    <div class="form-group">
+      <label>Sort</label>
+      <select id="list-sort-key">
+        <option value="id">Case ID</option>
+        <option value="priority">Priority</option>
+        <option value="stale">Stale days</option>
+        <option value="updated">Last updated</option>
+        <option value="created">Created</option>
+        <option value="state">State</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Order</label>
+      <select id="list-sort-dir">
+        <option value="asc">Ascending</option>
+        <option value="desc">Descending</option>
+      </select>
+    </div>
+  </div>
   <input id="list-query" type="hidden" value="active=true">
   <input id="list-table" type="hidden" value="incident">
   <div class="btn-row">
@@ -516,6 +536,10 @@ body { font-size: var(--text-base); color: var(--text); background: var(--surfac
         <option value="False alarm confirmed. No further action required.">False alarm confirmed</option>
         <option value="">Custom</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label>Closure Code</label>
+      <select id="alarm-reason"></select>
     </div>
     <div class="form-group">
       <label>Close Note</label>
