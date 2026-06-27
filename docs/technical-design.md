@@ -1,12 +1,16 @@
-# SNOW Ticket Manager — Technical Design Document
+# SNOW + Siebel Ticket Manager — Technical Design Document
 
 ## 1. Overview
 
-SNOW Ticket Manager is a Chrome sidebar extension (Manifest V3) that allows users to manage ServiceNow tickets directly from the browser sidebar. It leverages the user's existing SSO session — no API tokens, no additional authentication required.
+SNOW + Siebel Ticket Manager is a Chrome sidebar extension (Manifest V3) that lets users manage ServiceNow tickets and Siebel CRM activities directly from the browser sidebar. It leverages the user's existing SSO/browser sessions — no API tokens, no additional authentication required.
 
-### Target Instance
+This document focuses on the ServiceNow side. The Siebel CRM integration (GCT automation + OCD backlog API) follows the same injection pattern but targets `gct.avaya.com` via `content-gct.js` and `ocd.avaya.com` via direct REST.
 
-`avaya.service-now.com` (Avaya corporate ServiceNow instance)
+### Target Instances
+
+- `avaya.service-now.com` — ServiceNow (ticket management)
+- `gct.avaya.com` — Siebel CRM (activity creation via the Siebel JS API)
+- `ocd.avaya.com` — OCD API (Siebel backlog fetch)
 
 ### Key Constraints
 
@@ -82,13 +86,16 @@ User Action → panel.js → chrome.runtime.sendMessage() → background.js
                                               panel.js → update UI
 ```
 
-### 2.3 Two-Step Script Injection
+### 2.3 Cached Script Injection
 
-Chrome extensions cannot directly access page JavaScript context. The two-step injection pattern is required:
+Chrome extensions cannot directly access page JavaScript context, so helpers are injected into the page's MAIN world. Each injectable helper (`content-snow.js`, `content-gct.js`) is injected **once per tab** and cached in a `Set` (`snowInjectedTabs` / `gctInjectedTabs`); subsequent operations on the same tab skip re-injection and run only the function-exec step.
 
-1. **Step 1**: Inject `content-snow.js` into the page's MAIN world. This file defines the `snowFetch()` helper function that has access to `g_ck` (ServiceNow CSRF token) and session cookies.
+1. **Step 1 (once per tab)**: Inject the helper file (`content-snow.js` defines `snowFetch()` with access to `g_ck` and session cookies; `content-gct.js` provides the Siebel JS API wrappers).
+2. **Step 2 (every call)**: Execute a self-contained function in the MAIN world that calls the helper. Functions must be self-contained — `executeScript` functions run in isolation and cannot reference variables from other functions.
 
-2. **Step 2**: Execute a self-contained function in the MAIN world that calls `snowFetch()`. Each function must be self-contained because `executeScript` functions run in isolation — they cannot reference variables from other functions.
+A global `chrome.tabs.onUpdated` listener clears both caches on a top-level reload (`status === "loading"`) so a hard `F5` — which tears down the MAIN world — forces a fresh re-inject on the next operation. SPA route changes and iframe refreshes don't trip the filter, so the cache persists across normal in-app navigation.
+
+> **Safety:** caching is safe because `snowFetch()` reads the `g_ck` token live on every call, never capturing it at injection time — a rotated token is picked up automatically.
 
 ### 2.4 Authentication Model
 
@@ -125,10 +132,14 @@ chrome-extension/
 ├── manifest.json          # Extension configuration (Manifest V3)
 ├── background.js          # Service worker — message routing & API orchestration
 ├── content-snow.js        # Injected into SNOW page (MAIN world) — snowFetch helper
-├── panel.html             # Sidebar UI — layout, styles, 4-tab structure
+├── content-gct.js         # Injected into Siebel/GCT page (MAIN world) — headless BC API automation
+├── note-fields.js         # Shared module — builds comment/work-note field maps (importScripts)
+├── panel.html             # Sidebar UI — layout, styles, 5-tab structure
 ├── panel.js               # Sidebar UI logic — event handlers, DOM rendering
 └── icons/
-    └── icon48.png         # Extension icon (48x48)
+    ├── icon16.png
+    ├── icon48.png
+    └── icon128.png
 ```
 
 ### 3.1 File Responsibilities
@@ -136,8 +147,10 @@ chrome-extension/
 | File | Role | Execution Context |
 |------|------|-------------------|
 | `manifest.json` | Extension config, permissions, entry points | N/A |
-| `background.js` | Service worker, message routing, script injection | Service Worker |
-| `content-snow.js` | Provides `snowFetch()` for authenticated API calls | Page MAIN world |
+| `background.js` | Service worker, message routing, script injection, orchestration, OCD API calls | Service Worker |
+| `content-snow.js` | Provides `snowFetch()` for authenticated SNOW API calls | SNOW page MAIN world |
+| `content-gct.js` | Automates Siebel CRM via the Siebel JS API (`theApplication()`, `SiebelApp.S_App`) | Siebel page MAIN world |
+| `note-fields.js` | Builds the work-note/comment field maps shared by background.js | Loaded via `importScripts` in background.js |
 | `panel.html` | Sidebar UI layout and CSS styles | Side Panel |
 | `panel.js` | UI logic, tab switching, form handling, DOM rendering | Side Panel |
 
@@ -167,11 +180,20 @@ chrome-extension/
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
-| `getTicket` | `ticketNumber`, `includeJournal` | Fetch ticket details + optional journal |
-| `listTickets` | `table`, `query`, `limit`, `fields` | List tickets by encoded query |
-| `addComment` | `ticketNumber`, `comment`, `isWorkNote`, `noteType`, `visibility`, `effortMinutes` | Add comment/work note with metadata |
-| `updateTicket` | `ticketNumber`, `fields` | Update ticket fields (state, priority) |
-| `resolveTicket` | `ticketNumber`, `resolutionNote` | Resolve ticket with notes |
+| `getTicket` | `ticketNumber`, `includeJournal`, `includeCi` | Fetch ticket details + optional journal (work_notes/comments) and CI remote-access info |
+| `listTickets` | `table`, `query`, `limit`, `fields`, `includeCi` | List tickets by encoded query; optionally enrich each with CI details (batched) |
+| `getJournal` | `ticketNumber` | Fetch the journal fields for a ticket |
+| `addComment` | `ticketNumber`, `note`, `noteType`, `effortMinutes`, … | Add work note with metadata + optional effort time |
+| `updateTicket` | `ticketNumber`, `fields`, `effortMinutes` | Update ticket fields (state, priority, status reason, follow-up) |
+| `resolveTicket` | `ticketNumber`, `resolutionNote`, `statusReason` | Resolve ticket with notes |
+| `alarmClose` | `ticketNumber`, `note`, `effortMinutes`, `statusReason` | Chain alarm INC through to Closed (state steps + closure code + effort) |
+| `takeTicket` | `ticketNumber` | Assign to current user + set In Progress (Infinity "Take") |
+| `getNoteTypes` | — | Fetch Work Note Type options from `sys_choice` |
+| `getCredentials` | `ciSysId` | Lazy-load CI device credentials |
+| `openSiebel` | `siebelId` | Open an SR/Activity in the Siebel CRM tab |
+| `siebelCreateActivity` | `srNumber` | Create a new Siebel Activity on an SR (GCT automation) |
+| `fetchOcdBacklog` | — | Fetch the user's Siebel backlog (SRs/SRAs) from the OCD API |
+| `debugFields` | — | Diagnostic: dump available fields on the instance |
 
 **Table Detection:**
 
@@ -216,14 +238,15 @@ async function snowFetch(method, relUrl, body) {
 
 ### 4.3 panel.html — UI Layout
 
-**Structure:** 4-tab interface in the Chrome Side Panel.
+**Structure:** 5-tab interface in the Chrome Side Panel.
 
 | Tab | Order | Default | Purpose |
 |-----|-------|---------|---------|
-| Comment | 1st | Yes | Add work notes/comments |
-| Action | 2nd | No | Update state, priority, resolve |
-| List | 3rd | No | Query ticket lists with filters |
-| Query | 4th | No | Search single ticket by number |
+| List | 1st | Yes | Query ticket lists with filters + sort; inline actions |
+| Note (Comment) | 2nd | No | Add work notes/comments |
+| Action | 3rd | No | Update state, priority, resolve; alarm quick-close |
+| Query | 4th | No | Search a single ticket by number |
+| Siebel | 5th | No | Open Siebel activities; Siebel backlog (OCD API) |
 
 ### 4.4 panel.js — UI Logic
 
@@ -232,7 +255,11 @@ async function snowFetch(method, relUrl, body) {
 | Function | Purpose |
 |----------|---------|
 | `send(msg)` | Send message to background.js via `chrome.runtime.sendMessage` |
-| `displayVal(value)` | Recursively extract display_value from SNOW's `{value, display_value}` objects |
+| `displayVal(value)` | Extract display_value from SNOW's `{value, display_value}` objects |
+| `valueVal(value)` | Like `displayVal` but prefers `.value` — used where display_value is a label, not the sort key (e.g. `state`) |
+| `getStateConfig(table)` | Return the per-table state config (labels, transitions, status reasons, alarm chains) |
+| `compareTickets(a,b,key,dir)` | Sort comparator for the List tab (id/priority/stale/updated/created/state × asc/desc) |
+| `buildStatusReasonOptions(sel)` | Build the Closure Code dropdown options from the per-table state config |
 | `stateBadge(state)` | Render state with colored badge + raw code |
 | `esc(s)` | HTML entity escaping (prevent XSS) |
 | `formatField(label, value)` | Render a label:value field row |
@@ -277,29 +304,29 @@ All calls go to `https://avaya.service-now.com/api/now/table/{table}`.
 |-----------|--------|----------|-------|
 | Get ticket | GET | `/{table}?sysparm_query=number={num}&sysparm_display_value=all` | Returns single ticket |
 | List tickets | GET | `/{table}?sysparm_query={query}&sysparm_limit={n}&sysparm_display_value=all` | Returns array |
-| Update ticket | PUT | `/{table}/{sys_id}` | Body = fields to update |
-| Add comment/note | PUT | `/{table}/{sys_id}` | Set `work_notes` or `comments` field |
-| Resolve ticket | PUT | `/{table}/{sys_id}` | Set `state: "6"` + resolution notes |
-| Log effort | POST | `/task_time_worked` | `document_id`, `time_worked`, `time_worked_units` |
-| Get journal | GET | `/sys_journal_field?sysparm_query=element_id={sys_id}^name={table}^ORDERBYDESCsys_created_on` | Work notes + comments history |
+| Update ticket | PATCH | `/{table}/{sys_id}` | Body = fields to update |
+| Add comment/note | PATCH | `/{table}/{sys_id}` | Set `work_notes` or `comments` field |
+| Resolve/close ticket | PATCH | `/{table}/{sys_id}` | Set `state` + resolution/close notes |
+| Log effort | POST | `/task_time_worked` | `task`, `time_worked`, `user`, `comments` |
+| Aggregate time | PATCH | `/{table}/{sys_id}` | Update `time_worked` field directly |
+| Get journal | GET | `/{table}/{sys_id}?sysparm_fields=work_notes,comments&sysparm_display_value=all` | Read from the record, not `sys_journal_field` (ACL-blocked on this instance) |
 
 ### 5.2 Custom Fields
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `u_work_note_type` | String (dropdown) | Work note category (Status Update, ADM 1-6, etc.) |
-| `u_internal_public` | String | Visibility: "internal" or "public" |
+| `u_wn_type` | String (dropdown, from `sys_choice`) | Work note category (Internal Only, Status Update, etc.) |
+| `u_status_reason` | String (dropdown, from state config) | Closure/close reason — set on Resolved/Closed steps (Repaired, Alarm(s) Cleared on Access, …) |
 | `u_resolution_notes` | String | Resolution notes for resolved tickets |
+| `u_private_note` | String | Private note written alongside the close note |
 
 > **Note:** These field names are instance-specific and may differ across ServiceNow deployments.
 
 ### 5.3 Journal Query (Activity Log)
 
-Work notes and comments are stored in the `sys_journal_field` table:
-- `element_id` = ticket's sys_id
-- `name` = table name (e.g., "incident")
-- `element` = "work_notes" or "comments"
-- `value` = the actual note content
+Work notes and comments are read directly from the ticket record's `work_notes` and `comments` fields (via `GET /{table}/{sys_id}?sysparm_fields=work_notes,comments`), **not** from the `sys_journal_field` table — that table has ACL restrictions on this instance and returns empty results via REST API.
+
+ServiceNow returns these journal fields as concatenated text where each entry has a header line in the format `YYYY-MM-DD HH:MM:SS - Author (info)`. The parser splits on this pattern, extracts datetime/author/body, and merges work notes and comments into a single list sorted newest-first. Duplicate entries (stubs + email bodies) are merged automatically.
 
 ---
 
@@ -321,34 +348,34 @@ Work notes and comments are stored in the `sys_journal_field` table:
 
 ```json
 {
-  "permissions": ["cookies", "activeTab", "scripting", "sidePanel"],
-  "host_permissions": ["*://avaya.service-now.com/*"]
+  "permissions": ["activeTab", "scripting", "sidePanel"],
+  "host_permissions": ["*://avaya.service-now.com/*", "*://gct.avaya.com/*", "*://ocd.avaya.com/*"]
 }
 ```
 
-- `cookies` — reserved for potential future cookie-based auth
 - `activeTab` — access current tab for script injection
-- `scripting` — inject content-snow.js into SNOW page
+- `scripting` — inject `content-snow.js` / `content-gct.js` into SNOW / Siebel pages
 - `sidePanel` — open sidebar UI
-- `host_permissions` — restricted to the Avaya ServiceNow instance only
+- `host_permissions` — ServiceNow (ticket management), Siebel CRM / GCT (activity creation), OCD API (Siebel backlog)
 
 ---
 
 ## 7. Quick Filter Presets
 
+The List tab exposes these presets (defined in `PRESETS` in `panel.js`):
+
 | Preset | Encoded Query |
 |--------|--------------|
 | My Open Tickets | `active=true^assigned_to=javascript:gs.getUserID()` |
+| My Open Alarms | `active=true^assigned_to=javascript:gs.getUserID()^contact_type=Alarm` |
 | My Recently Updated | `assigned_to=javascript:gs.getUserID()^ORDERBYDESCsys_updated_on` |
 | My Resolved (7 days) | `assigned_to=javascript:gs.getUserID()^state=7^resolved_onONLast 7 days@javascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0)` |
-| My Group's Open | `active=true^assignment_group=javascript:gs.getUser().getMyGroups()` |
-| P1/P2 Open | `active=true^priorityIN1,2` |
-| All Open | `active=true^ORDERBYDESCsys_updated_on` |
-| Updated Today | `sys_updated_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_updated_on` |
-| Created Today | `sys_created_onONToday@javascript:gs.daysAgoStart(0)@javascript:gs.daysAgoEnd(0)^ORDERBYDESCsys_created_on` |
 | Awaiting User Info | `state=4^assigned_to=javascript:gs.getUserID()` |
+| Infinity Alarms (Unassigned) | `active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ` |
 
-> **Note:** `javascript:gs.getUserID()` and similar are ServiceNow server-side evaluated expressions — they are not executed in the browser.
+> **Notes:**
+> - `javascript:gs.getUserID()` and similar are ServiceNow server-side evaluated expressions — they are not executed in the browser.
+> - The Infinity preset's `assignment_group.name=` uses a dot-walk (not sys_id) because the sys_id form hits an ACL that silently excludes unassigned incidents, and the trailing `^EQ` is required on this instance or the `ISEMPTY` condition is dropped (matches SNOW's own "Open - Unassigned" module). Each Infinity card has a "Take" link that assigns the incident to the user and sets it to In Progress.
 
 ---
 
@@ -356,10 +383,10 @@ Work notes and comments are stored in the `sys_journal_field` table:
 
 ### Current Limitations
 
-- Requires an active ServiceNow tab (extension will error if no SNOW tab is open)
+- Requires an active ServiceNow tab (extension will error if no SNOW tab is open); Siebel features likewise require a logged-in GCT tab
 - Session timeout follows SSO policy (~8 hours) — no auto-refresh
-- Journal entries limited to most recent 20
-- Custom field names (`u_work_note_type`, `u_internal_public`, `u_resolution_notes`) are instance-specific
+- Custom field names (`u_wn_type`, `u_status_reason`, `u_resolution_notes`) are instance-specific
+- Closure-code options come from a hardcoded per-table state config, not a live `sys_choice` fetch (the fetch returned nothing on this instance)
 - No offline capability or local caching
 
 ### Potential Future Enhancements

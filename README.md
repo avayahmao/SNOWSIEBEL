@@ -8,7 +8,7 @@ Install from the Chrome Web Store: [SNOW + Siebel Ticket Manager](https://chrome
 
 ## Features
 
-- **List** — View your tickets with quick filter presets (My Open, My Recently Updated, My Resolved, Awaiting User Info). Inline actions on each ticket card let you add notes, update status, or close alarm INCs without switching tabs.
+- **List** — View your tickets with quick filter presets (My Open, My Open Alarms, Recently Updated, Resolved, Awaiting User Info, Infinity Alarms). Sort by Case ID, Priority, Stale days, Last updated, Created, or State — Ascending or Descending; the choice persists across sessions. Inline actions on each ticket card let you add notes, update status, or close alarm INCs without switching tabs.
 - **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time, and message. Default type is "Internal Only". Visibility is internal only (ACL restriction on public comments).
 - **Action** — Update ticket state with status reason, follow-up date, notes, and effort time. Alarm INCs show a dedicated quick-close section that chains state transitions in one click.
 - **Query** — Search any ticket by number (INC/CHG/PRB/RITM/etc.), view details, CI remote access info (with device credentials), and recent activity log.
@@ -22,7 +22,7 @@ Every ticket card in List and Query results has expandable inline forms — no n
 - **View Notes** — Inline journal viewer with work notes (gold badge) and comments (blue badge), paginated in batches of 5
 - **+ Add Note** — Work Note Type, effort time, message
 - **Update Status** — State, status reason, follow-up date, notes, effort time
-- **Close Alarm** — Note template, close note, effort time (alarm INCs only)
+- **Close Alarm** — Note template, closure code, close note, effort time (alarm INCs only)
 
 Only one form can be open at a time per ticket. Click the same link again to collapse it. Forms stay usable after submission — inputs are cleared and you can submit again without refreshing.
 
@@ -31,7 +31,7 @@ Only one form can be open at a time per ticket. Click the same link again to col
 Alarm-generated INCs (detected by `contact_type = Alarm`) get a purple "Alarm" badge and a green "Close Alarm" action. This chains the state transitions automatically:
 
 - New/In Progress/Pending/Assigned → Service Restored → Resolved → Closed
-- Sets status reason to "Alarm(s) Cleared on Access" on Resolved and Closed steps
+- **User-selectable Closure Code** — choose the `u_status_reason` written at close (Repaired, Replaced, Patch / Upgrade, Customer or Third Party Action, Alarm(s) Cleared on Access, Change Request); same options as "Update Status → Closed". Default is "Alarm(s) Cleared on Access".
 - Logs effort time if specified
 
 ## Install from Source (for development)
@@ -63,9 +63,11 @@ Click the extension icon to open the sidebar. The default tab is **List** (auto-
 ### Quick filter presets (List tab)
 
 - My Open Tickets
+- My Open Alarms (your assigned `contact_type = Alarm` incidents)
 - My Recently Updated
 - My Resolved (7 days)
 - Awaiting User Info
+- Infinity Alarms (Unassigned) — active, New, unassigned incidents in the Avaya Infinity Platform group; each card has a "Take" link to claim it in one click
 
 ## Project Structure
 
