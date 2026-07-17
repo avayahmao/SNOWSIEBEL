@@ -1165,6 +1165,12 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     const sortKey = document.getElementById("list-sort-key").value;
     const sortDir = document.getElementById("list-sort-dir").value;
     tickets.sort((a, b) => compareTickets(a, b, sortKey, sortDir));
+    // Cap to the user's Limit AFTER sort. My Tickets mode fans out to 3 tables,
+    // each with its own `limit`, so the merged array can hold up to 3×limit rows.
+    // Sort-then-cap preserves "top N by sort key across all tables" — a fairer
+    // truncation than dividing the per-table limit (which would unfairly cut a
+    // table with many hits). Queue mode queries one table so the cap is a no-op.
+    tickets = tickets.slice(0, limit);
     if (!tickets.length) {
       listResult.innerHTML = '<div class="ticket-field" style="padding:8px">No tickets found</div>';
       return;

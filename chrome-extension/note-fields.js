@@ -53,7 +53,19 @@
       const cls = typeof t.sys_class_name === "object" ? t.sys_class_name.value : t.sys_class_name;
       if (cls) return cls;
     }
-    return detectTable(t ? displayVal(t.number) : "");
+    // sys_class_name absent (cached data, single-ticket lookup without the
+    // field, partial API response). Fall back to number-prefix detection.
+    const number = t ? displayVal(t.number) : "";
+    const prefix = number.slice(0, 3).toUpperCase();
+    if (!TABLE_MAP[prefix]) {
+      // Unknown prefix → detectTable defaults to "incident". This is usually
+      // fine for rendering, but on the Take path it would send incident's
+      // workStartState:"2" against the wrong table. Warn so the misclassification
+      // isn't invisible. (Callers that request sys_class_name never reach here.)
+      console.warn("resolveTable: unknown ticket prefix " + JSON.stringify(prefix) +
+        " for number " + JSON.stringify(number) + "; defaulting to incident.");
+    }
+    return detectTable(number);
   }
 
   function formatEffort(effortMinutes) {
