@@ -10,6 +10,7 @@
     root.TABLE_MAP = api.TABLE_MAP;
     root.detectTable = api.detectTable;
     root.displayVal = api.displayVal;
+    root.resolveTable = api.resolveTable;
     root.TABLE_STATES = api.TABLE_STATES;
     root.getStateConfig = api.getStateConfig;
   }
@@ -36,6 +37,21 @@
       return "";
     }
     return String(value);
+  }
+
+  // resolveTable: authoritative record-class resolution for rendering and Take.
+  // Prefers sys_class_name from the API (correct for every record, including the
+  // queue's mixed task/change_task/problem results where number-prefix guessing
+  // fails — TASK prefix can be task or change_task, and detectTable maps TAS->task
+  // but doesn't know TASK, defaulting to incident silently wrong). Falls back to
+  // detectTable's number-prefix guess when sys_class_name is absent (back-compat
+  // for cached data or single-ticket lookups that didn't request the field).
+  function resolveTable(t) {
+    if (t && t.sys_class_name) {
+      const cls = typeof t.sys_class_name === "object" ? t.sys_class_name.value : t.sys_class_name;
+      if (cls) return cls;
+    }
+    return detectTable(t ? displayVal(t.number) : "");
   }
 
   function formatEffort(effortMinutes) {
@@ -233,5 +249,5 @@
     return TABLE_STATES[table] || TABLE_STATES.incident;
   }
 
-  return { buildCommentFields, TABLE_MAP, detectTable, displayVal, TABLE_STATES, getStateConfig };
+  return { buildCommentFields, TABLE_MAP, detectTable, displayVal, resolveTable, TABLE_STATES, getStateConfig };
 });

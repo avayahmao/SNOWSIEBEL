@@ -1085,7 +1085,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
     }
     let html = "";
     for (const t of tickets) {
-      const lTable = detectTable(displayVal(t.number));
+      const lTable = resolveTable(t);
       const sc = staleClass(t.sys_updated_on, t.state, lTable);
       html += `<div class="ticket-card${sc}">`;
       html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on, t.state, lTable)}</div>`;

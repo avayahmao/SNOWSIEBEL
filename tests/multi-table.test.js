@@ -38,3 +38,33 @@ test("getStateConfig returns the right entry for change_task", () => {
 test("TABLE_STATES.sc_request.workStartState is null (no in-progress state)", () => {
   assert.equal(TABLE_STATES.sc_request.workStartState, null);
 });
+
+const { resolveTable } = require("../chrome-extension/note-fields.js");
+
+test("resolveTable prefers sys_class_name.value when present", () => {
+  const t = { number: "TASK0010001", sys_class_name: { value: "change_task", display_value: "Change Task" } };
+  assert.equal(resolveTable(t), "change_task");
+});
+
+test("resolveTable handles sys_class_name as a string", () => {
+  const t = { number: "TASK0010001", sys_class_name: "change_task" };
+  assert.equal(resolveTable(t), "change_task");
+});
+
+test("resolveTable falls back to detectTable(number) when sys_class_name absent", () => {
+  const t = { number: "INC0010001" };
+  assert.equal(resolveTable(t), "incident");
+});
+
+test("resolveTable falls back to detectTable when sys_class_name.value is empty", () => {
+  const t = { number: "PRB0010001", sys_class_name: { value: "", display_value: "" } };
+  assert.equal(resolveTable(t), "problem");
+});
+
+test("resolveTable handles null ticket gracefully (defaults to incident)", () => {
+  assert.equal(resolveTable(null), "incident");
+});
+
+test("resolveTable handles undefined ticket gracefully", () => {
+  assert.equal(resolveTable(undefined), "incident");
+});
