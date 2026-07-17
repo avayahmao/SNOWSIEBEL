@@ -1072,15 +1072,17 @@ const PRESETS = {
  * change_task, problem) which drives per-card rendering (resolveTable) and
  * Take semantics — do not confuse the query table with the per-record class.
  *
- * Trailing ^EQ is intentionally NOT included (the source URL doesn't have
- * it). If the query unexpectedly returns 0 results, the ISEMPTY clauses may
- * need a bare ^EQ terminator on this instance — see the infinity-alarms
- * comment above for the same quirk. First debugging knob.
+ * GOTCHA: the UNION separator is ^NQ (caret-N-Q), NOT bare NQ. A bare NQ
+ * glues onto the preceding value (e.g. "...u_ebonding_messagesNQsys_...")
+ * and SNOW parses the whole thing as one malformed condition → 0 results,
+ * silently. This was the root cause of the initial "no results" bug —
+ * verified by byte-comparing the decoded URL against the working browser
+ * version (2026-07-17). The fix is the caret; ^EQ was NOT the issue here.
  */
 const GERMAN_NS_QUEUE_QUERY =
   "assignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^assigned_toISEMPTY^parentISEMPTY^sys_class_name!=u_ebonding_stage^sys_class_name!=u_ebonding_messages" +
-  "NQassignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^sys_class_name=change_task^assigned_toISEMPTY" +
-  "NQassignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^numberSTARTSWITHPRB^ORnumberSTARTSWITHTASK^assigned_toISEMPTY";
+  "^NQsys_class_name=change_task^assignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^assigned_toISEMPTY" +
+  "^NQassignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^numberSTARTSWITHPRB^ORnumberSTARTSWITHTASK^assigned_toISEMPTY";
 
 // Restore saved List sort selections; default = Case ID desc (new on top)
 function restoreListSort() {
