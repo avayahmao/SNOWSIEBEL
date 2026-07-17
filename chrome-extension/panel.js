@@ -382,35 +382,39 @@ document.addEventListener("click", (e) => {
   if (e.target.classList.contains("take-link")) {
     e.preventDefault();
     const ticket = e.target.dataset.ticket;
+    const table = e.target.dataset.table;   // authoritative sys_class_name (resolveTable at render)
     if (!ticket) return;
     const link = e.target;
     const originalText = link.textContent;
     link.classList.add("disabled");
     link.textContent = "Taking...";
-    send({ action: "takeTicket", ticketNumber: ticket })
+    send({ action: "takeTicket", ticketNumber: ticket, table: table })
       .then(() => {
         // Replace link with a static "✓ Taken" marker
         const taken = document.createElement("span");
         taken.className = "taken-marker";
         taken.textContent = "✓ Taken";
         link.replaceWith(taken);
-        // Refresh this card's state badge to In Progress and show "You" assignee
+        // Refresh this card's state badge to the table's work-started state.
+        // resolveTable at render gave us `table` (sys_class_name); use it to
+        // look up the correct label + badge class instead of the old hardcoded
+        // "In Progress" / state-active (incident-only). If workStartState is
+        // null (sc_request — no in-progress state), leave the badge unchanged.
         const card = taken.closest(".ticket-card");
-        if (card) {
-          // State badge: In Progress (state 2) is incident-only by design — Infinity alarms
-          // are INCs and takeTicket sends state:"2" unconditionally. The class "state-active"
-          // matches TABLE_STATES.incident.classes["2"]. If this ever extends to another table,
-          // route through getStateConfig/stateBadge instead of hardcoding the class.
-          const badge = card.querySelector(".state-badge");
-          if (badge) {
-            badge.className = "state-badge state-active";
-            badge.textContent = "In Progress";
+        if (card && table) {
+          const cfg = getStateConfig(table);
+          const ws = cfg.workStartState;
+          if (ws != null) {
+            const badge = card.querySelector(".state-badge");
+            if (badge) {
+              badge.className = "state-badge " + (cfg.classes[ws] || "state-active");
+              badge.textContent = cfg.labels[ws] || "In Progress";
+            }
           }
           // Assigned to: find the field line labeled "Assigned to" and append a "You" badge
           const fields = card.querySelectorAll(".ticket-field");
           for (const f of fields) {
             if (/^Assigned to:/i.test(f.textContent.trim())) {
-              // Avoid double-appending if already taken
               if (!f.querySelector(".take-you")) {
                 const youBadge = document.createElement("span");
                 youBadge.className = "take-you";
@@ -1070,6 +1074,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   // string, because the Infinity query is now a plain static string (like every
   // other preset) — there's no marker to intercept.
   let infinityMode = (document.getElementById("list-preset").value === "infinity-alarms");
+  let germanMode = (document.getElementById("list-preset").value === "german-ns");
   showLoading(listResult);
   try {
     const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
@@ -1123,7 +1128,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
         }
       }
       html += `<div class="action-links-row">`;
-      if (infinityMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}">Take</a>`;
+      if (infinityMode || germanMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}" data-table="${esc(lTable)}">Take</a>`;
       html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
       html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
