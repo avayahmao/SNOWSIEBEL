@@ -3,7 +3,7 @@
 ## Listing Details
 
 - **Name:** SNOW + Siebel Ticket Manager
-- **Version:** 2.11
+- **Version:** 2.12
 - **Category:** Workflow & Planning
 - **Language:** English
 - **Privacy Policy URL:** https://avayahmao.github.io/SNOWSIEBEL/privacy-policy.html (hosted via GitHub Pages from this repo's root)
@@ -20,7 +20,7 @@ The extension recognizes standard ServiceNow record types including incidents, c
 
 ### ServiceNow Features
 
-- **List** — View your open tickets with quick filter presets (My Open, My Open Alarms, Recently Updated, Resolved, Awaiting User Info, Infinity Alarms). Sort by Case ID, Priority, Stale days, Last updated, Created, or State — Ascending or Descending; the choice persists across sessions. Inline actions let you add notes, update status, or close alarm INCs without switching tabs. Stale tickets are highlighted: yellow for ≥7 days, red with pulsing badge for ≥14 days since last update. Remote Access info (IP, SE ID, NAT IP, Connectivity) is shown inline on every card; device credentials lazy-load on click. Infinity preset cards have a "Take" link to claim an unassigned incident in one click.
+- **List** — View your open tickets with quick filter presets (My Open, My Open Alarms, Recently Updated, Resolved, Awaiting User Info, Infinity Alarms, German Non-Standard Queue). My Tickets presets now show INC, CHG, and PRB tickets together in one merged, sortable list. Sort by Case ID, Priority, Stale days, Last updated, Created, or State — Ascending or Descending; the choice persists across sessions. State sort orders tickets by lifecycle stage (New < Active < Resolved < Closed) across all record types. Inline actions let you add notes, update status, or close alarm INCs without switching tabs. Stale tickets are highlighted: yellow for ≥7 days, red with pulsing badge for ≥14 days since last update. Remote Access info (IP, SE ID, NAT IP, Connectivity) is shown inline on every card; device credentials lazy-load on click. The Infinity Alarms and German Non-Standard Queue presets have a "Take" link on each card to claim an unassigned ticket in one click — Take moves the record to its work-started state (e.g. In Progress for incidents, Assess for problems, Implement for changes).
 - **Work Note** — Add work notes with dynamically loaded Work Note Type options (fetched from SNOW sys_choice table), effort time tracking, and message. Default type is "Internal Only". All notes are internal (ACL restriction on public comments).
 - **Action** — Update ticket state with per-table state dropdowns, status reason, follow-up datetime, and resolution notes. State options adapt to the detected ticket type. Alarm INCs get a dedicated quick-close section. CI Remote Access shows device info and credentials.
 - **Query** — Search any ticket by number to view full details, CI Remote Access info, device passwords, and activity log.

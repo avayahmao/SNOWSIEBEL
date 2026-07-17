@@ -187,7 +187,7 @@ chrome-extension/
 | `updateTicket` | `ticketNumber`, `fields`, `effortMinutes` | Update ticket fields (state, priority, status reason, follow-up) |
 | `resolveTicket` | `ticketNumber`, `resolutionNote`, `statusReason` | Resolve ticket with notes |
 | `alarmClose` | `ticketNumber`, `note`, `effortMinutes`, `statusReason` | Chain alarm INC through to Closed (state steps + closure code + effort) |
-| `takeTicket` | `ticketNumber` | Assign to current user + set In Progress (Infinity "Take") |
+| `takeTicket` | `ticketNumber`, `table` (optional) | Assign to current user + set the per-table work-started state (`TABLE_STATES[table].workStartState`). Infinity "Take" and German-queue "Take" both route through here. `table` is the authoritative `sys_class_name` from the panel; falls back to `detectTable` for back-compat. |
 | `getNoteTypes` | — | Fetch Work Note Type options from `sys_choice` |
 | `getCredentials` | `ciSysId` | Lazy-load CI device credentials |
 | `openSiebel` | `siebelId` | Open an SR/Activity in the Siebel CRM tab |
@@ -208,6 +208,8 @@ const TABLE_MAP = {
 ```
 
 Table is detected from the first 3 characters of the ticket number.
+
+> **`resolveTable` (note-fields.js, v2.12+) is the authoritative resolver for List rendering and Take.** It prefers `sys_class_name` from the API response (correct for every record, including the queue's mixed `task`/`change_task`/`problem` results where number-prefix guessing fails — `TASK` prefix can be `task` or `change_task`, and `detectTable` doesn't recognize `TASK`, silently defaulting to `incident`). `detectTable` / `TABLE_MAP` above remains the fallback for single-ticket lookups (Query/Note/Action tabs) where `sys_class_name` isn't requested, and for cached data.
 
 ### 4.2 content-snow.js — API Helper
 
@@ -362,7 +364,7 @@ ServiceNow returns these journal fields as concatenated text where each entry ha
 
 ## 7. Quick Filter Presets
 
-The List tab exposes these presets (defined in `PRESETS` in `panel.js`):
+The List tab exposes these presets (defined in `PRESETS` in `panel.js`, plus the German queue which has its own `GERMAN_NS_QUEUE_QUERY` constant):
 
 | Preset | Encoded Query |
 |--------|--------------|
@@ -372,10 +374,14 @@ The List tab exposes these presets (defined in `PRESETS` in `panel.js`):
 | My Resolved (7 days) | `assigned_to=javascript:gs.getUserID()^state=7^resolved_onONLast 7 days@javascript:gs.daysAgoStart(7)@javascript:gs.daysAgoEnd(0)` |
 | Awaiting User Info | `state=4^assigned_to=javascript:gs.getUserID()` |
 | Infinity Alarms (Unassigned) | `active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ` |
+| German Non-Standard Queue | 3-part UNION on the `task` base table (group `9ed0c8781b4b3954ee7b1131b24bcb9d`); see `GERMAN_NS_QUEUE_QUERY` in `panel.js` for the full decoded string |
 
 > **Notes:**
 > - `javascript:gs.getUserID()` and similar are ServiceNow server-side evaluated expressions — they are not executed in the browser.
-> - The Infinity preset's `assignment_group.name=` uses a dot-walk (not sys_id) because the sys_id form hits an ACL that silently excludes unassigned incidents, and the trailing `^EQ` is required on this instance or the `ISEMPTY` condition is dropped (matches SNOW's own "Open - Unassigned" module). Each Infinity card has a "Take" link that assigns the incident to the user and sets it to In Progress.
+> - The Infinity preset's `assignment_group.name=` uses a dot-walk (not sys_id) because the sys_id form hits an ACL that silently excludes unassigned incidents, and the trailing `^EQ` is required on this instance or the `ISEMPTY` condition is dropped (matches SNOW's own "Open - Unassigned" module). Each Infinity card has a "Take" link that assigns the incident to the user and moves it to the work-started state for its table.
+> - **My Tickets presets fan out to `incident` + `change_request` + `problem` in parallel** (`Promise.allSettled`, v2.12+) and merge into one sorted list capped at the user's Limit. A 400/ACL failure on one table surfaces an inline warning without losing the others.
+> - **The German Non-Standard Queue queries the `task` base table** (not `incident`) because the queue mixes record classes. The UNION separator is `^NQ` (caret-N-Q) — NOT bare `NQ`, which SNOW parses as a malformed single condition returning 0 results (root cause of a real bug during development). Each queue card has a "Take" link. Switching off the German preset resets the hidden `#list-table` to `incident` so queue-mode state doesn't leak into the next My Tickets search.
+> - **Take sets a per-table work-started state** (v2.12+): incident→2 (In Progress), problem→102 (Assess), change_request→-1 (Implement), task/change_task→2 (Work in Progress). `sc_request` has `workStartState: null` (no in-progress state) and is assigned without a state change.
 
 ---
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.12] - 2026-07-17
+
+### Added
+- **Multi-table List view** — My Tickets presets now fan out to `incident` + `change_request` + `problem` in parallel (`Promise.allSettled`), merge, sort, and cap to the user's Limit. CHG and PRB tickets now appear alongside INC in every My Tickets preset. Failed tables surface an inline warning ("Some tables failed to load: …") while successful tables still render. CI enrichment runs once per table (3 bulk fetches total) — acceptable because `cmdb_ci` sys_ids are disjoint across tables, so no duplicate work.
+- **German Non-Standard Queue preset** — New "German Non-Standard Queue" option in the List Filter dropdown. Hardcoded 3-part UNION query against the `task` base table for assignment group `9ed0c8781b4b3954ee7b1131b24bcb9d` (unassigned, active records). Each card has a Take link. Built for the team's pull-from-queue workflow.
+- **Per-table Take action** — Take now sets the work-started state appropriate to the record's `sys_class_name` instead of a hardcoded incident value: incident→2 (In Progress), problem→102 (Assess), change_request→-1 (Implement), task/change_task→2 (Work in Progress). `sc_request` (no in-progress state) assigns without a state change. Infinity Alarms queue behavior is unchanged (incident→2 matches the old hardcoded value).
+- `change_task` entry added to `TABLE_STATES` (mirrors `task`'s state model, pending sys_choice probe verification).
+- New message contract: `takeTicket` now accepts an optional `table` parameter (authoritative `sys_class_name` from the panel); falls back to `detectTable` for back-compat.
+
+### Changed
+- **`TABLE_STATES` + `getStateConfig` moved from `panel.js` to `note-fields.js`** (the shared UMD module) so the background service worker can read per-table state config via `importScripts`. No call-site changes in `panel.js` — all 13 usages resolve through the global (`note-fields.js` loads first in `panel.html`).
+- New pure helpers in `note-fields.js`: `resolveTable` (sys_class_name-first with detectTable fallback — `detectTable`'s number-prefix guess is unreliable for queue records where TASK prefix can be `task` or `change_task`), `stateBucketRank` / `stateBucketRankForTicket` (cross-table lifecycle bucket-sort). All exported via both UMD paths (browser global + Node `require`).
+- `listTicketsInPage` now requests `sys_class_name` in `sysparm_fields` (authoritative record class for rendering and Take semantics).
+- **Cross-table state sort** — "state asc/desc" now bucket-sorts by lifecycle (new < active < resolved < closed) via `TABLE_STATES` badge classes, then by raw value within a bucket. Raw `parseInt(state.value)` was meaningless across tables (incident 1-8, change_request -5..4, problem 101-106) and grouped all CHGs before INCs before PRBs regardless of lifecycle.
+- Take links now carry a `data-table` attribute (set at render from `resolveTable`); the click handler forwards it to `takeTicket` so per-table `workStartState` actually applies to non-INC queue records. Post-Take badge update generalized to use `getStateConfig` labels/classes instead of the old hardcoded "In Progress" / `state-active` (incident-only).
+- `workStartState` field added to every `TABLE_STATES` entry (the per-table "work started" state Take moves a record to).
+
+### Fixed
+- **German queue UNION separator** — the encoded query requires `^NQ` (caret-N-Q) between sub-queries, NOT bare `NQ`. Bare `NQ` glues onto the preceding value (e.g. `…u_ebonding_messagesNQsys_class_name…`) and ServiceNow parses the whole string as one malformed condition → 0 results, silently. Root cause of the initial "queue returns nothing in the extension" bug; verified by byte-comparing the decoded source URL against the encoded constant. The spec's `^EQ` prediction (based on the infinity-alarms precedent) was a misdiagnosis and did not apply here.
+
+### Notes
+- The `change_task` `TABLE_STATES` entry is a verbatim copy of `task`'s state model as a safe default. A live `sys_choice` probe (`name=change_task^element=state`) should confirm whether `change_task` uses the same state values on this instance; if not, the entry needs updating. If a Take on a `change_task` ever sets an invalid state, the inline-error fallback surfaces it and the user can use "Update Status" manually.
+- The `my-open-alarms` preset uses `contact_type=Alarm`, which doesn't exist on `change_request`/`problem`. The fan-out may produce a 400 on those two tables; the inline warning (§Added above) surfaces it accurately. Special-casing was deliberately deferred to observed behavior.
+
 ## [2.11] - 2026-06-27
 
 ### Added
