@@ -13,6 +13,8 @@
     root.resolveTable = api.resolveTable;
     root.TABLE_STATES = api.TABLE_STATES;
     root.getStateConfig = api.getStateConfig;
+    root.stateBucketRank = api.stateBucketRank;
+    root.stateBucketRankForTicket = api.stateBucketRankForTicket;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, function() {
 
@@ -249,5 +251,28 @@
     return TABLE_STATES[table] || TABLE_STATES.incident;
   }
 
-  return { buildCommentFields, TABLE_MAP, detectTable, displayVal, resolveTable, TABLE_STATES, getStateConfig };
+  // stateBucketRank: maps a TABLE_STATES class string to a lifecycle bucket
+  // for cross-table state sorting. Raw parseInt(state.value) is meaningless on
+  // a merged list because the three tables' state ranges don't overlap
+  // (incident 1-8, change_request -5..4, problem 101-106) — "state asc" would
+  // group every CHG (negative) first, then INC, then PRB. Bucket-sorting by
+  // the badge class (new/active/resolved/closed) gives a meaningful lifecycle
+  // order across tables. Unknown classes sort last (bucket 4).
+  const STATE_BUCKET_RANK = { "state-new": 0, "state-active": 1, "state-resolved": 2, "state-closed": 3 };
+  function stateBucketRank(classStr) {
+    return STATE_BUCKET_RANK[classStr] != null ? STATE_BUCKET_RANK[classStr] : 4;
+  }
+
+  // stateBucketRankForTicket: resolves a ticket to its state bucket by looking
+  // up its table's badge class for the current state value. Table comes from
+  // sys_class_name (authoritative) via resolveTable, with detectTable fallback.
+  function stateBucketRankForTicket(t) {
+    const tbl = resolveTable(t);
+    const cfg = getStateConfig(tbl);
+    const sv = (t && t.state && typeof t.state === "object") ? t.state.value : (t && t.state);
+    const cls = cfg.classes[sv];
+    return stateBucketRank(cls);
+  }
+
+  return { buildCommentFields, TABLE_MAP, detectTable, displayVal, resolveTable, TABLE_STATES, getStateConfig, stateBucketRank, stateBucketRankForTicket };
 });

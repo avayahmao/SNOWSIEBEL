@@ -68,3 +68,18 @@ test("resolveTable handles null ticket gracefully (defaults to incident)", () =>
 test("resolveTable handles undefined ticket gracefully", () => {
   assert.equal(resolveTable(undefined), "incident");
 });
+
+const { stateBucketRank } = require("../chrome-extension/note-fields.js");
+
+test("stateBucketRank returns 0 for new, 1 for active, 2 for resolved, 3 for closed", () => {
+  assert.equal(stateBucketRank("state-new"), 0);
+  assert.equal(stateBucketRank("state-active"), 1);
+  assert.equal(stateBucketRank("state-resolved"), 2);
+  assert.equal(stateBucketRank("state-closed"), 3);
+});
+
+test("stateBucketRank returns 4 (sorts last) for unknown class", () => {
+  assert.equal(stateBucketRank(""), 4);
+  assert.equal(stateBucketRank("state-unknown"), 4);
+  assert.equal(stateBucketRank(undefined), 4);
+});

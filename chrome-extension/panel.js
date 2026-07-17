@@ -186,7 +186,9 @@ function valueVal(v) {
 // `dir` ∈ asc/desc. All field access via displayVal/valueVal/parseUpdatedOn (the query
 // uses sysparm_display_value=all, so fields arrive as {value, display_value} objects —
 // raw Date.parse would NaN). Tiebreaks are fixed-direction per the design.
-// Byte-identical (minus this preamble) to the reference copy in tests/sort-verify.js.
+// Note: tests/sort-verify.js holds the pre-merge (single-table) characterization
+// baseline. The state branch here adds cross-table bucket-sorting (stateBucketRank)
+// that sort-verify.js does not exercise — it's a historical reference, not a mirror.
 function compareTickets(a, b, key, dir) {
   const mult = dir === "desc" ? -1 : 1;
   if (key === "id") {
@@ -219,6 +221,14 @@ function compareTickets(a, b, key, dir) {
     return cmpIdDesc(a, b); // tiebreak: id desc
   }
   if (key === "state") {
+    // Bucket-sort by lifecycle (new < active < resolved < closed) using the
+    // badge class from TABLE_STATES. Falls back to the raw value within a
+    // bucket. This makes "state asc" meaningful on merged cross-table lists;
+    // raw parseInt would group all CHGs (negative) before INCs before PRBs.
+    // stateBucketRankForTicket lives in note-fields.js (loaded as global).
+    const ra = stateBucketRankForTicket(a);
+    const rb = stateBucketRankForTicket(b);
+    if (ra !== rb) return (ra - rb) * mult;
     const sa = parseInt(valueVal(a.state), 10) || 0;
     const sb = parseInt(valueVal(b.state), 10) || 0;
     if (sa !== sb) return (sa - sb) * mult;
