@@ -37,139 +37,10 @@ function send(msg) {
   });
 }
 
-// --- Per-table state configuration ---
-// Each key is a ServiceNow table name; entries define state labels, CSS classes,
-// selectable states, allowed transitions, status reasons, alarm chains, etc.
-const TABLE_STATES = {
-  incident: {
-    labels: { "-5": "Pending", "1": "New", "2": "In Progress", "3": "Awaiting Problem", "4": "Service Restored", "5": "Assigned", "6": "Resolved", "7": "Closed", "8": "Cancelled" },
-    classes: { "-5": "state-active", "1": "state-new", "2": "state-active", "3": "state-active", "4": "state-resolved", "5": "state-active", "6": "state-resolved", "7": "state-closed", "8": "state-closed" },
-    selectableStates: ["2", "-5", "4", "5", "6", "7", "8"],
-    transitions: {
-      "1": ["2", "5"],
-      "2": ["-5", "4", "6", "8"],
-      "-5": ["2", "4", "6", "8"],
-      "4": ["2", "-5", "6", "8"],
-      "5": ["2", "-5", "4", "6", "8"],
-    },
-    reasons: {
-      "2": ["-- None --", "Escalation to Product House", "Dispatch", "Escalated to Vendor/Partner"],
-      "-5": ["Additional Information from Client", "Approval from Client to Proceed", "Awaiting Change Request", "Client Action Required", "Client Hold", "Manager Intervention", "Remote Access to Equipment", "Success Confirmation from Client", "Support Contact Hold", "Third Party Vendor Action Required"],
-      "4": ["-- None --"],
-      "6": ["-- None --", "Customer or Third Party Action", "Repaired", "Replaced", "Patch / Upgrade", "Alarm(s) Cleared on Access", "Change Request"],
-      "7": ["-- None --", "Repaired", "Replaced", "Patch / Upgrade", "Customer or Third Party Action", "Alarm(s) Cleared on Access", "Change Request"],
-      "8": ["-- None --", "Customer/Location Inactive", "Duplicate Incident", "Ignore Alarm", "Test Alarm", "Customer Cancelled", "Created Change Request Instead", "Ticket Created in Error", "No Longer Required"],
-    },
-    alarmChains: {
-      "1": ["2", "4", "6", "7"],
-      "2": ["4", "6", "7"],
-      "-5": ["4", "6", "7"],
-      "5": ["4", "6", "7"],
-      "4": ["6", "7"],
-      "6": ["7"],
-    },
-    supportsAlarmClose: true,
-    resolveState: "6",
-    pendingState: "-5",
-    hasFollowUp: true,
-  },
-  change_request: {
-    labels: { "-5": "New", "-4": "Assess", "-3": "Authorize", "-2": "Scheduled", "-1": "Implement", "0": "Review", "3": "Closed", "4": "Canceled" },
-    classes: { "-5": "state-new", "-4": "state-active", "-3": "state-active", "-2": "state-active", "-1": "state-active", "0": "state-resolved", "3": "state-closed", "4": "state-closed" },
-    selectableStates: ["-4", "-3", "-2", "-1", "0", "3", "4"],
-    transitions: {
-      "-5": ["-4", "-2", "4"],
-      "-4": ["-3", "-2", "4"],
-      "-3": ["-2", "4"],
-      "-2": ["-1", "4"],
-      "-1": ["0", "4"],
-      "0": ["3"],
-    },
-    reasons: {},
-    supportsAlarmClose: false,
-    resolveState: "3",
-    pendingState: null,
-    hasFollowUp: false,
-  },
-  problem: {
-    labels: { "101": "New", "102": "Assess", "103": "Root Cause Analysis", "104": "Fix in Progress", "105": "Resolved", "106": "Closed" },
-    classes: { "101": "state-new", "102": "state-active", "103": "state-active", "104": "state-active", "105": "state-resolved", "106": "state-closed" },
-    selectableStates: ["102", "103", "104", "105", "106"],
-    transitions: {
-      "101": ["102"],
-      "102": ["103", "106"],
-      "103": ["104", "105", "106"],
-      "104": ["105", "106"],
-      "105": ["106"],
-    },
-    reasons: {},
-    supportsAlarmClose: false,
-    resolveState: "105",
-    pendingState: null,
-    hasFollowUp: false,
-  },
-  sc_req_item: {
-    labels: { "1": "Open", "2": "Work in Progress", "3": "Closed Complete", "4": "Closed Incomplete", "5": "Closed Skipped" },
-    classes: { "1": "state-new", "2": "state-active", "3": "state-closed", "4": "state-closed", "5": "state-closed" },
-    selectableStates: ["2", "3", "4", "5"],
-    transitions: {
-      "1": ["2", "3", "4", "5"],
-      "2": ["3", "4", "5"],
-    },
-    reasons: {},
-    supportsAlarmClose: false,
-    resolveState: "3",
-    pendingState: null,
-    hasFollowUp: false,
-  },
-  sc_request: {
-    labels: { "-5": "Pending", "4": "Closed Complete", "5": "Closed Incomplete", "6": "Closed Rejected" },
-    classes: { "-5": "state-active", "4": "state-closed", "5": "state-closed", "6": "state-closed" },
-    selectableStates: ["4", "5", "6"],
-    transitions: {
-      "-5": ["4", "5", "6"],
-    },
-    reasons: {},
-    supportsAlarmClose: false,
-    resolveState: "4",
-    pendingState: "-5",
-    hasFollowUp: false,
-  },
-  task: {
-    labels: { "-5": "Pending", "1": "Open", "2": "Work in Progress", "3": "Closed Complete", "4": "Closed Incomplete", "7": "Closed Skipped" },
-    classes: { "-5": "state-active", "1": "state-new", "2": "state-active", "3": "state-closed", "4": "state-closed", "7": "state-closed" },
-    selectableStates: ["2", "3", "4", "7"],
-    transitions: {
-      "-5": ["1", "3", "4", "7"],
-      "1": ["2", "3", "4", "7"],
-      "2": ["3", "4", "7"],
-    },
-    reasons: {},
-    supportsAlarmClose: false,
-    resolveState: "3",
-    pendingState: "-5",
-    hasFollowUp: false,
-  },
-  sc_task: {
-    labels: { "-5": "Pending", "1": "Open", "2": "Work in Progress", "3": "Closed Complete", "4": "Closed Incomplete", "7": "Closed Skipped" },
-    classes: { "-5": "state-active", "1": "state-new", "2": "state-active", "3": "state-closed", "4": "state-closed", "7": "state-closed" },
-    selectableStates: ["2", "3", "4", "7"],
-    transitions: {
-      "-5": ["1", "3", "4", "7"],
-      "1": ["2", "3", "4", "7"],
-      "2": ["3", "4", "7"],
-    },
-    reasons: {},
-    supportsAlarmClose: false,
-    resolveState: "3",
-    pendingState: "-5",
-    hasFollowUp: false,
-  },
-};
-
-function getStateConfig(table) {
-  return TABLE_STATES[table] || TABLE_STATES.incident;
-}
+// TABLE_STATES and getStateConfig now live in note-fields.js (shared module) so both
+// panel.js and background.js (the service worker, via importScripts) can reach them.
+// They attach to globalThis when note-fields.js loads (before panel.js — see panel.html),
+// so the call sites below resolve through the global unchanged.
 
 // Work note types — loaded dynamically from SNOW sys_choice, with hardcoded fallback
 var NOTE_TYPES = ["", "Customer Feedback", "Detail Clarification", "Internal Only", "Cancellation Information", "Escalation 1", "Status Update", "Next Steps", "ADM 1: Problem Statement", "ADM 2: Details/Findings", "ADM 3: Problem Clarification", "ADM 4: Cause", "ADM 5: Solution", "ADM 6: Knowledge Management", "Manager Comments", "Management Escalation Request", "Management Escalation Response", "Management Escalation Update", "Management Escalation Closure", "General Information", "Customer Comments"];
@@ -315,7 +186,9 @@ function valueVal(v) {
 // `dir` ∈ asc/desc. All field access via displayVal/valueVal/parseUpdatedOn (the query
 // uses sysparm_display_value=all, so fields arrive as {value, display_value} objects —
 // raw Date.parse would NaN). Tiebreaks are fixed-direction per the design.
-// Byte-identical (minus this preamble) to the reference copy in tests/sort-verify.js.
+// Note: tests/sort-verify.js holds the pre-merge (single-table) characterization
+// baseline. The state branch here adds cross-table bucket-sorting (stateBucketRank)
+// that sort-verify.js does not exercise — it's a historical reference, not a mirror.
 function compareTickets(a, b, key, dir) {
   const mult = dir === "desc" ? -1 : 1;
   if (key === "id") {
@@ -348,6 +221,14 @@ function compareTickets(a, b, key, dir) {
     return cmpIdDesc(a, b); // tiebreak: id desc
   }
   if (key === "state") {
+    // Bucket-sort by lifecycle (new < active < resolved < closed) using the
+    // badge class from TABLE_STATES. Falls back to the raw value within a
+    // bucket. This makes "state asc" meaningful on merged cross-table lists;
+    // raw parseInt would group all CHGs (negative) before INCs before PRBs.
+    // stateBucketRankForTicket lives in note-fields.js (loaded as global).
+    const ra = stateBucketRankForTicket(a);
+    const rb = stateBucketRankForTicket(b);
+    if (ra !== rb) return (ra - rb) * mult;
     const sa = parseInt(valueVal(a.state), 10) || 0;
     const sb = parseInt(valueVal(b.state), 10) || 0;
     if (sa !== sb) return (sa - sb) * mult;
@@ -511,35 +392,39 @@ document.addEventListener("click", (e) => {
   if (e.target.classList.contains("take-link")) {
     e.preventDefault();
     const ticket = e.target.dataset.ticket;
+    const table = e.target.dataset.table;   // authoritative sys_class_name (resolveTable at render)
     if (!ticket) return;
     const link = e.target;
     const originalText = link.textContent;
     link.classList.add("disabled");
     link.textContent = "Taking...";
-    send({ action: "takeTicket", ticketNumber: ticket })
+    send({ action: "takeTicket", ticketNumber: ticket, table: table })
       .then(() => {
         // Replace link with a static "✓ Taken" marker
         const taken = document.createElement("span");
         taken.className = "taken-marker";
         taken.textContent = "✓ Taken";
         link.replaceWith(taken);
-        // Refresh this card's state badge to In Progress and show "You" assignee
+        // Refresh this card's state badge to the table's work-started state.
+        // resolveTable at render gave us `table` (sys_class_name); use it to
+        // look up the correct label + badge class instead of the old hardcoded
+        // "In Progress" / state-active (incident-only). If workStartState is
+        // null (sc_request — no in-progress state), leave the badge unchanged.
         const card = taken.closest(".ticket-card");
-        if (card) {
-          // State badge: In Progress (state 2) is incident-only by design — Infinity alarms
-          // are INCs and takeTicket sends state:"2" unconditionally. The class "state-active"
-          // matches TABLE_STATES.incident.classes["2"]. If this ever extends to another table,
-          // route through getStateConfig/stateBadge instead of hardcoding the class.
-          const badge = card.querySelector(".state-badge");
-          if (badge) {
-            badge.className = "state-badge state-active";
-            badge.textContent = "In Progress";
+        if (card && table) {
+          const cfg = getStateConfig(table);
+          const ws = cfg.workStartState;
+          if (ws != null) {
+            const badge = card.querySelector(".state-badge");
+            if (badge) {
+              badge.className = "state-badge " + (cfg.classes[ws] || "state-active");
+              badge.textContent = cfg.labels[ws] || "In Progress";
+            }
           }
           // Assigned to: find the field line labeled "Assigned to" and append a "You" badge
           const fields = card.querySelectorAll(".ticket-field");
           for (const f of fields) {
             if (/^Assigned to:/i.test(f.textContent.trim())) {
-              // Avoid double-appending if already taken
               if (!f.querySelector(".take-you")) {
                 const youBadge = document.createElement("span");
                 youBadge.className = "take-you";
@@ -1172,6 +1057,33 @@ const PRESETS = {
   "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ",
 };
 
+/**
+ * German Non-Standard Support queue.
+ * Source: task_list.do URL provided by user (2026-07-17).
+ * UNION of 3 sub-queries on the `task` base table
+ * (group sys_id 9ed0c8781b4b3954ee7b1131b24bcb9d):
+ *   1. group tasks, excluding ebonding stage/messages tables
+ *   2. change_task records in the group
+ *   3. PRB- or TASK-numbered records in the group
+ * All sub-queries require active=true and assigned_toISEMPTY (unassigned).
+ *
+ * NOTE: `task` here is the QUERY target (SNOW base table that accepts the
+ * UNION). Each returned record carries its own sys_class_name (task,
+ * change_task, problem) which drives per-card rendering (resolveTable) and
+ * Take semantics — do not confuse the query table with the per-record class.
+ *
+ * GOTCHA: the UNION separator is ^NQ (caret-N-Q), NOT bare NQ. A bare NQ
+ * glues onto the preceding value (e.g. "...u_ebonding_messagesNQsys_...")
+ * and SNOW parses the whole thing as one malformed condition → 0 results,
+ * silently. This was the root cause of the initial "no results" bug —
+ * verified by byte-comparing the decoded URL against the working browser
+ * version (2026-07-17). The fix is the caret; ^EQ was NOT the issue here.
+ */
+const GERMAN_NS_QUEUE_QUERY =
+  "assignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^assigned_toISEMPTY^parentISEMPTY^sys_class_name!=u_ebonding_stage^sys_class_name!=u_ebonding_messages" +
+  "^NQsys_class_name=change_task^assignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^assigned_toISEMPTY" +
+  "^NQassignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^numberSTARTSWITHPRB^ORnumberSTARTSWITHTASK^assigned_toISEMPTY";
+
 // Restore saved List sort selections; default = Case ID desc (new on top)
 function restoreListSort() {
   const keySel = document.getElementById("list-sort-key");
@@ -1185,6 +1097,20 @@ function restoreListSort() {
 
 document.getElementById("list-preset").addEventListener("change", (e) => {
   const preset = e.target.value;
+  if (preset === "german-ns") {
+    // Queue mode: query the task base table with the hardcoded UNION.
+    // #list-table is used by the queue branch of btn-list (single call,
+    // no fan-out). germanMode is read by btn-list to show the Take link.
+    document.getElementById("list-query").value = GERMAN_NS_QUEUE_QUERY;
+    document.getElementById("list-table").value = "task";
+    return;
+  }
+  // Any other preset: My Tickets mode (fan-out over incident/change_request/
+  // problem — added in Task 7). Reset #list-table to incident so queue-mode
+  // state doesn't leak into the next My Tickets search. btn-list's fan-out
+  // ignores this value, but keeping it consistent avoids confusion if the
+  // fan-out is ever reverted.
+  document.getElementById("list-table").value = "incident";
   if (preset && PRESETS[preset]) {
     document.getElementById("list-query").value = PRESETS[preset];
   }
@@ -1199,22 +1125,61 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   // string, because the Infinity query is now a plain static string (like every
   // other preset) — there's no marker to intercept.
   let infinityMode = (document.getElementById("list-preset").value === "infinity-alarms");
+  let germanMode = (document.getElementById("list-preset").value === "german-ns");
   showLoading(listResult);
   try {
-    const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
+    let tickets;
+    let pendingTableWarning = null;
+    if (germanMode) {
+      // Queue mode: single call against the task base table. The UNION query
+      // returns mixed sys_class_name records in one response — no fan-out.
+      tickets = await send({ action: "listTickets", table: "task", query, limit, includeCi: true });
+    } else {
+      // My Tickets mode: fan out to incident + change_request + problem in
+      // parallel, then merge. Promise.allSettled (not Promise.all) so a 400
+      // or ACL denial on one table doesn't lose the others — failed tables
+      // are surfaced as an inline warning above the results (spec §5a).
+      // includeCi:true on each call triggers 3 bulk-CI fetches (one per table)
+      // because CI enrichment runs inside listTickets in the background. This
+      // is acceptable — sys_ids are disjoint across tables, no duplicate work
+      // (spec §1, corrected cost claim).
+      const MY_TICKETS_TABLES = ["incident", "change_request", "problem"];
+      const settled = await Promise.allSettled(
+        MY_TICKETS_TABLES.map(t => send({ action: "listTickets", table: t, query, limit, includeCi: true }))
+      );
+      const failed = [];
+      tickets = [];
+      for (let i = 0; i < settled.length; i++) {
+        if (settled[i].status === "fulfilled") {
+          tickets = tickets.concat(settled[i].value);
+        } else {
+          failed.push(MY_TICKETS_TABLES[i]);
+        }
+      }
+      if (failed.length) {
+        pendingTableWarning = "Some tables failed to load: " + failed.join(", ");
+      }
+      // else: pendingTableWarning stays null (initialized at declaration)
+    }
     // Sort: user-selected key + direction (default Case ID desc). Comparator
     // routes all field access through displayVal/valueVal/parseUpdatedOn so the
     // {value, display_value} objects from sysparm_display_value=all don't NaN.
     const sortKey = document.getElementById("list-sort-key").value;
     const sortDir = document.getElementById("list-sort-dir").value;
     tickets.sort((a, b) => compareTickets(a, b, sortKey, sortDir));
+    // Cap to the user's Limit AFTER sort. My Tickets mode fans out to 3 tables,
+    // each with its own `limit`, so the merged array can hold up to 3×limit rows.
+    // Sort-then-cap preserves "top N by sort key across all tables" — a fairer
+    // truncation than dividing the per-table limit (which would unfairly cut a
+    // table with many hits). Queue mode queries one table so the cap is a no-op.
+    tickets = tickets.slice(0, limit);
     if (!tickets.length) {
       listResult.innerHTML = '<div class="ticket-field" style="padding:8px">No tickets found</div>';
       return;
     }
     let html = "";
     for (const t of tickets) {
-      const lTable = detectTable(displayVal(t.number));
+      const lTable = resolveTable(t);
       const sc = staleClass(t.sys_updated_on, t.state, lTable);
       html += `<div class="ticket-card${sc}">`;
       html += `<div>${ticketLink(displayVal(t.number))}${staleBadge(t.sys_updated_on, t.state, lTable)}</div>`;
@@ -1252,7 +1217,7 @@ document.getElementById("btn-list").addEventListener("click", async () => {
         }
       }
       html += `<div class="action-links-row">`;
-      if (infinityMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}">Take</a>`;
+      if (infinityMode || germanMode) html += `<a class="take-link" data-ticket="${esc(displayVal(t.number))}" data-table="${esc(lTable)}">Take</a>`;
       html += `<a class="view-notes-link" data-ticket="${esc(displayVal(t.number))}">View Notes</a>`;
       html += `<a class="add-note-link" data-ticket="${esc(displayVal(t.number))}">+ Add Note</a>`;
       html += `<a class="update-link" data-ticket="${esc(displayVal(t.number))}">Update Status</a>`;
@@ -1261,6 +1226,13 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       html += `</div>`;
     }
     listResult.innerHTML = html;
+    if (pendingTableWarning) {
+      const warn = document.createElement("div");
+      warn.className = "ticket-field";
+      warn.style.cssText = "padding:8px;color:var(--text-muted);border-bottom:1px solid var(--border)";
+      warn.textContent = "⚠ " + pendingTableWarning;
+      listResult.insertBefore(warn, listResult.firstChild);
+    }
   } catch (e) {
     showError(listResult, e.message);
   }

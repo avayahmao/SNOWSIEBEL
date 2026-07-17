@@ -289,7 +289,7 @@ function getTicketInPage(table, ticketNumber) {
 
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
-params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,sys_created_on,contact_type,cmdb_ci");
+params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,sys_created_on,contact_type,cmdb_ci,sys_class_name");
   // URLSearchParams encodes spaces as '+' (form-encoding), but ServiceNow's
   // sysparm_query parser expects '%20'. A literal '+' in a query value (e.g. the
   // group name "Avaya Infinity Platform" in the Infinity preset) is not decoded
@@ -732,16 +732,34 @@ async function handleMessage(msg) {
     // the injection cache first so the two parallel injectAndExec calls don't both
     // inject content-snow.js on a cold tab (harmless if they did — idempotent —
     // but this avoids the redundant inject).
+    //
+    // localTable: prefer the caller-supplied table (the panel now sends the
+    // authoritative sys_class_name via resolveTable — see panel.js render loop).
+    // Falls back to the outer-scope `table` (detectTable prefix guess) for
+    // back-compat with any caller that doesn't send `table`. Cannot redeclare
+    // `table` — it's already const at the top of this dispatch block.
+    const localTable = msg.table || table;
     await ensureSnowInjected(tab.id);
     const [ticket, userId] = await Promise.all([
-      injectAndExec(tab.id, getTicketInPage, [table, msg.ticketNumber]),
+      injectAndExec(tab.id, getTicketInPage, [localTable, msg.ticketNumber]),
       injectAndExec(tab.id, getUserIdInPage, []),
     ]);
     if (!ticket) throw new Error("Ticket " + msg.ticketNumber + " not found");
     const sysId = typeof ticket.sys_id === "object" ? ticket.sys_id.value : ticket.sys_id;
     if (!userId) throw new Error("Could not determine current user");
+    // Per-table work-started state. Incident->2 (In Progress) preserves the
+    // previous hardcoded behavior exactly. Problem->102 (Assess),
+    // change_request->-1 (Implement), task/change_task->2 (Work in Progress).
+    // sc_request has workStartState:null (no in-progress state) — in that case
+    // Take assigns WITHOUT changing state (omit state from the PATCH body).
+    // TABLE_STATES is in scope via importScripts("note-fields.js") at line 1.
+    const cfg = TABLE_STATES[localTable];
+    const patch = { assigned_to: userId };
+    if (cfg && cfg.workStartState != null) {
+      patch.state = cfg.workStartState;
+    }
     const result = await injectAndExec(tab.id, updateBySysIdInPage, [
-      table, sysId, { assigned_to: userId, state: "2" }
+      localTable, sysId, patch
     ]);
     if (result && result._error) throw new Error(result._error);
     return { success: true, assignedTo: userId };
