@@ -62,9 +62,10 @@ The `task` base table accepts a UNION query (SNOW `NQ` separator) and returns mi
 **Behavior.** When any non-queue preset is selected and Search is clicked, the sidebar issues 3 parallel `listTickets` calls — one each against `incident`, `change_request`, `problem` — using the same encoded query string. Results are concatenated, sorted by the user's chosen sort key/direction, and rendered as today.
 
 **Cheap because:**
-- `listTickets` already exists and is table-parameterized (`background.js:754`, `listTicketsInPage` at `background.js:290`). We just call it 3× via `Promise.allSettled` instead of once via `Promise.all`.
-- CI-bulk-fetch enrichment runs once after the merge (dedup by `cmdb_ci` sys_id — already what the background code does at `background.js:757-775`). Pass the merged array through a single enrichment pass.
+- `listTickets` already exists and is table-parameterized (`background.js:754`, `listTicketsInPage` at `background.js:290`). We just call it 3× via `Promise.allSettled` instead of once.
 - Field rendering already handles all 3 tables via `getStateConfig` / `TABLE_STATES` (`panel.js:170`).
+
+**CI enrichment cost (corrected):** the existing CI-bulk-fetch runs *inside* each `listTickets` call (`background.js:756-776`), so a 3-way fan-out with `includeCi:true` triggers **3** bulk-CI fetches, not one. This is acceptable — each call's `cmdb_ci` sys_ids are disjoint (a CI belongs to one ticket in one table), so there's no duplicate work, just three small batched reads instead of one larger one. We keep `includeCi:true` on each fan-out call and accept the 3-fetch cost. (If profiling later shows this matters, the alternative is a dedicated background `getCiDetailsBulk` action and dropping `includeCi` from the fan-out — out of scope for this change.)
 
 **Per-table query caveats (accepted, not special-cased):**
 - Generic presets (`my-open`, `my-updated`, `my-resolved`, `awaiting`) are field-based and apply to all 3 tables.
@@ -110,14 +111,35 @@ const GERMAN_NS_QUEUE_QUERY =
 - **Query table:** `task` (the SNOW base table — hardcoded for this preset) instead of fan-out. Note this is the *query* target only; each returned record carries its own `sys_class_name` (`task`, `change_task`, `problem`, etc.), which is what drives per-card rendering and Take semantics (Section 3a/4b). Do not confuse the query table with the per-record class.
 - **Query string:** `GERMAN_NS_QUEUE_QUERY` instead of `PRESETS[preset]`.
 - **Take link:** shown on every queue card via a `germanMode` flag (mirrors `infinityMode`).
-- **Trailing `^EQ` not needed** — the user's URL doesn't have it, and the `^EQ` quirk is specific to the `infinity-alarms` preset's dot-walk+ISEMPTY combo on this instance. If the empty `assigned_toISEMPTY` clauses don't filter correctly in testing, `^EQ` is the first knob to try (documented inline).
+- **Trailing `^EQ`** — intentionally **not** included in the initial constant (the user's URL doesn't have it). The existing `infinity-alarms` comment (`panel.js:1167-1171`) attributes the `^EQ` requirement to the bare `ISEMPTY` condition on this instance, and the German queue has three `assigned_toISEMPTY` clauses — so it's plausible `^EQ` could be needed here too. We start without it (matches the source URL exactly) and treat "queue returns 0 unexpectedly" as the signal to try appending `^EQ` (see §5d). Reasoning kept soft on purpose — empirically verified at first run.
 
 **New `<option>`** added to the Filter `<select>` in `panel.html:439-446`:
 ```html
 <option value="german-ns">German Non-Standard Queue</option>
 ```
 
-**Wire-up** in the existing `list-preset` change handler (`panel.js:1186-1191`): when `german-ns` is selected, set the hidden query/table inputs to the queue values and set `germanMode = true` (analogous to today's `infinityMode`). When any other preset is selected, clear `germanMode` and restore the normal My Tickets flow.
+**Wire-up** in the existing `list-preset` change handler (`panel.js:1186-1191`). Because `german-ns` is intentionally not a `PRESETS` entry (it's a hardcoded constant with a different table), the change handler needs an explicit branch — the existing `if (preset && PRESETS[preset])` guard at `panel.js:1188` silently skips unknown keys. Also, **switching away from `german-ns` must reset the hidden `#list-table` to `incident` and clear `germanMode`**, otherwise queue-mode state leaks into the next My Tickets search:
+
+```js
+// panel.js — replaces the body of the list-preset change handler
+document.getElementById("list-preset").addEventListener("change", (e) => {
+  const preset = e.target.value;
+  if (preset === "german-ns") {
+    document.getElementById("list-query").value = GERMAN_NS_QUEUE_QUERY;
+    document.getElementById("list-table").value = "task";   // queue queries the task base table
+    germanMode = true;
+    return;
+  }
+  // Any other preset: restore My Tickets defaults
+  germanMode = false;
+  document.getElementById("list-table").value = "incident";  // reset — no queue-mode leak
+  if (preset && PRESETS[preset]) {
+    document.getElementById("list-query").value = PRESETS[preset];
+  }
+});
+```
+
+`germanMode` is a module-level `let` declared next to the existing `infinityMode` usage in the `btn-list` handler.
 
 ## Section 3 — Rendering Queue Cards (Mixed Record Types)
 
@@ -136,7 +158,15 @@ const lTable = (t.sys_class_name && t.sys_class_name.value) || detectTable(displ
 
 **3b. Add `change_task` to `TABLE_STATES`.**
 
-`TABLE_STATES` (`panel.js:43-168`) has `task` (lines 138-152) but **not** `change_task`. Without it, `getStateConfig("change_task")` falls back to `incident` (`panel.js:171`) — wrong labels and wrong alarm-close behavior. Add `change_task` mirroring `task`'s structure (change tasks use the task-style state model on this instance). If observed data during implementation shows `change_task` uses different state values, refine from that data; the `task` copy is a safe default.
+`TABLE_STATES` (`panel.js:43-168`) has `task` (lines 138-152) but **not** `change_task`. Without it, `getStateConfig("change_task")` falls back to `incident` (`panel.js:171`) — wrong labels and wrong alarm-close behavior. Add `change_task` mirroring `task`'s structure (change tasks use the task-style state model on this instance).
+
+**Verify before copying, not after:** before writing the `change_task` entry, run one manual API probe to confirm the state model actually matches `task`:
+
+```
+GET /api/now/table/sys_choice?sysparm_query=name=change_task^element=state&sysparm_fields=value,label&sysparm_display_value=false
+```
+
+This eliminates the §5g "user sees a state error, falls back to Update Status manually" path — if the probe shows different state values, we use those instead of `task`'s. Cheap (one read), removes a whole class of runtime failure. The `task` copy remains the fallback if the probe is ACL-blocked.
 
 **3c. Card chrome.**
 
@@ -154,9 +184,10 @@ Add a `workStartState` field to each `TABLE_STATES` entry:
 | `change_request` | `"-1"` | Implement |
 | `problem` | `"102"` | Assess |
 | `task` | `"2"` | Work in Progress |
-| `change_task` | `"2"` (same as task, verified at impl) | Work in Progress |
+| `change_task` | `"2"` (same as task, verified via sys_choice probe in §3b) | Work in Progress |
 | `sc_req_item` | `"2"` | Work in Progress |
-| `sc_request` | (no work-started state — not reachable from Take) | — |
+
+`takeTicket` has no reachability filter today, and we're not adding one — reachability is enforced upstream by which queries can return which tables (the German queue never returns `sc_req_item`/`sc_request`, and the Infinity queue only returns `incident`).
 
 `takeTicket` reads `TABLE_STATES[table].workStartState` instead of the hardcoded `"2"`. Falls back to `"2"` if a table is somehow missing the field.
 
@@ -172,19 +203,37 @@ Background uses `msg.table` if provided, else falls back to `detectTable(msg.tic
 
 **4c. `takeTicket` background change (`background.js:730-748`).**
 
-Minimal edit:
+⚠️ **Scope collision:** `background.js:706` declares `const table = detectTable(msg.ticketNumber || "")` at the top of the handler dispatch block, shared across *all* `if (msg.action === ...)` branches. The branches are all in one block scope, so re-declaring `const table` inside `takeTicket` is a duplicate-`const` parse error. Use a block-local `let` that shadows the outer value:
+
 ```js
-const table = msg.table || detectTable(msg.ticketNumber);
-// ... existing ticket + userId fetch ...
-const workState = (TABLE_STATES[table] && TABLE_STATES[table].workStartState) || "2";
+// inside the `if (msg.action === "takeTicket")` branch — NOT a fresh scope
+const localTable = msg.table || table;   // prefer caller-supplied, fall back to outer detectTable
+// ... existing ticket + userId fetch uses localTable, not table ...
+const workState = (TABLE_STATES[localTable] && TABLE_STATES[localTable].workStartState) || "2";
 const result = await injectAndExec(tab.id, updateBySysIdInPage, [
-  table, sysId, { assigned_to: userId, state: workState }
+  localTable, sysId, { assigned_to: userId, state: workState }
 ]);
 ```
 
-**4d. Panel-side post-Take UI update.**
+Also update the parallel `getTicketInPage` call on the line above to use `localTable` (currently it uses the outer `table`).
+
+**4d. Panel-side post-Take UI update + click handler wiring.**
 
 Today's post-Take code (`panel.js:526-552`) hardcodes the "In Progress" state-badge update for incidents (with a comment acknowledging this is incident-specific). Generalize: read `TABLE_STATES[lTable]` for the correct label and badge class. To support this, **every** Take link (Infinity and German queue alike) gets a `data-table` attribute set at render time, so the click handler has the authoritative table without re-deriving it. For Infinity cards `data-table="incident"` (no behavior change); for German queue cards `data-table` is the record's `sys_class_name`.
+
+The click handler (`panel.js:515-519`) currently reads only `link.dataset.ticket`. **It must also read `link.dataset.table` and pass it into the `send()` call**, otherwise the background falls back to `detectTable(number)` and the per-table `workStartState` machinery is silently bypassed for every non-INC queue record:
+
+```js
+// panel.js take-link handler
+const ticket = e.target.dataset.ticket;
+const table = e.target.dataset.table;           // NEW — must be read and forwarded
+if (!ticket) return;
+// ...
+send({ action: "takeTicket", ticketNumber: ticket, table: table })   // table now flows through
+  .then(() => { /* badge update uses TABLE_STATES[table] */ })
+```
+
+The post-Take badge update then reads `TABLE_STATES[table]` for the label + class instead of the hardcoded `"In Progress"` / `state-active`.
 
 **4e. Scope of change.**
 
@@ -216,13 +265,29 @@ Existing pattern: inline error next to the Take link, link reverts to "Take", au
 
 No auto-refresh (matches existing Infinity-queue behavior). The card shows "✓ Taken"; the taken ticket no longer matches `assigned_toISEMPTY` so it would disappear on next Search. User clicks Search again to see the updated queue.
 
-**5g. State semantics edge case for `change_task`.**
+**5g. State semantics edge case for `change_task` (mitigated by §3b probe).**
 
-If `change_task`'s actual state model on this instance differs from `task`'s (we're assuming they match — Section 3b), the Take action might set a state value that SNOW rejects or misinterprets. Mitigation: if the PATCH returns an error, the user sees the inline error (5e) and can use the existing Update Status action to set state manually. Verified empirically during implementation.
+If `change_task`'s actual state model on this instance differs from `task`'s, the Take action might set a state value that SNOW rejects or misinterprets. The §3b `sys_choice` probe is designed to catch this *before* implementation. Residual risk: the probe is ACL-blocked and we fall back to copying `task` — in that case, if a PATCH errors, the user sees the inline error (5e) and can use the existing Update Status action to set state manually.
 
 **5h. `my-resolved` returns empty for CHG/PRB.**
 
 Already covered in Section 1 — accepted as part of the "all presets try all 3 tables" choice. No special handling.
+
+**5j. `contact_type=Alarm` may 400 on non-incident tables.**
+
+`my-open-alarms` uses `contact_type=Alarm`. `change_request` and `problem` don't have a `contact_type` field at all — SNOW's response to an unknown field in `sysparm_query` is version-dependent: it may return an empty result (benign) or a 400 "invalid field" error (noisy — surfaces the §5a per-table warning on a common preset). Spot-check during implementation: run `my-open-alarms` once and watch whether CHG/PRB error out. If they 400, two options: (a) accept the inline warning (it's accurate), or (b) special-case `my-open-alarms` to skip CHG/PRB in the fan-out. Decide based on observed behavior; don't speculatively special-case.
+
+**5k. Sort tiebreak on merged list is deterministic but arbitrary (nit, no fix needed).**
+
+`cmpIdDesc` extracts trailing digits from the ticket number, so `INC0012345` and `CHG0012345` tie identically and fall through to a stable-but-arbitrary order. Not a bug — the user asked for merged multi-table and this is an inherent property of cross-table ID comparison. Documented here so it's not mistaken for one during testing.
+
+**5i. Sort-by-state is meaningless across tables (new — merge introduces this).**
+
+`compareTickets` (`panel.js:350-355`) sorts by `parseInt(state.value)` — raw numeric. The three tables' state ranges don't overlap meaningfully: incident `1`–`8`, change_request `-5`–`4`, problem `101`–`106`. On a merged list, "state asc" puts every CHG (negative) first, then every INC, then every PRB — which is not what a user sorting by state means.
+
+Fix: when `sortKey === "state"`, bucket-sort by `TABLE_STATES[table].classes[state]` first (the existing `new`/`active`/`resolved`/`closed` classification already used for badge CSS), then by raw state value within a bucket. The bucket order is `new < active < resolved < closed` (matches lifecycle progression). Concretely, modify the `key === "state"` branch in `compareTickets` to compute a bucket rank from `getStateConfig(lTable).classes[stateValue]` and compare buckets first.
+
+This only affects merged (My Tickets) mode — single-table queue mode is unaffected because all queue records share the `task`-family state model. Added to the testing plan (§7 below).
 
 ## Files Changed
 
@@ -247,3 +312,7 @@ Manual (no automated tests in this codebase — confirmed by exploration):
 6. **Queue — 0 results**: if the queue query returns empty, try appending `^EQ` (Section 2/5d) and confirm results appear.
 7. **Infinity queue regression**: confirm `infinity-alarms` still works (Take → incident In Progress); the per-table `workStartState` change must not regress incident behavior.
 8. **State badge after Take**: for each table, confirm the post-Take badge label/class matches `TABLE_STATES[table]` (not hardcoded "In Progress").
+9. **State sort on merged list (§5i)**: with `my-open` selected and sort = state asc, confirm CHG/INC/PRB are interleaved by lifecycle bucket (new → active → resolved → closed), NOT grouped by table. Without the bucket-sort fix, CHG (negative states) would all sort first.
+10. **`my-open-alarms` cross-table behavior (§5j)**: run `my-open-alarms` once. If CHG/PRB calls return 400 (invalid field `contact_type`), decide whether to accept the inline warning or special-case the fan-out. Document the observed behavior.
+11. **`change_task` state model (§3b)**: before writing the `TABLE_STATES.change_task` entry, run the `sys_choice` probe and confirm the state values. If they match `task`, copy `task`'s entry. If they differ, use the probed values.
+12. **Queue-mode state leak (§2 wiring)**: select `german-ns`, run Search, then switch back to `my-open` and run Search again. Confirm the second search queries `incident` (not `task`) — i.e., the hidden `#list-table` was reset.
