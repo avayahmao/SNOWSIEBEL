@@ -1047,6 +1047,31 @@ const PRESETS = {
   "infinity-alarms": "active=true^state=1^assignment_group.name=Avaya Infinity Platform^assigned_toISEMPTY^EQ",
 };
 
+/**
+ * German Non-Standard Support queue.
+ * Source: task_list.do URL provided by user (2026-07-17).
+ * UNION of 3 sub-queries on the `task` base table
+ * (group sys_id 9ed0c8781b4b3954ee7b1131b24bcb9d):
+ *   1. group tasks, excluding ebonding stage/messages tables
+ *   2. change_task records in the group
+ *   3. PRB- or TASK-numbered records in the group
+ * All sub-queries require active=true and assigned_toISEMPTY (unassigned).
+ *
+ * NOTE: `task` here is the QUERY target (SNOW base table that accepts the
+ * UNION). Each returned record carries its own sys_class_name (task,
+ * change_task, problem) which drives per-card rendering (resolveTable) and
+ * Take semantics — do not confuse the query table with the per-record class.
+ *
+ * Trailing ^EQ is intentionally NOT included (the source URL doesn't have
+ * it). If the query unexpectedly returns 0 results, the ISEMPTY clauses may
+ * need a bare ^EQ terminator on this instance — see the infinity-alarms
+ * comment above for the same quirk. First debugging knob.
+ */
+const GERMAN_NS_QUEUE_QUERY =
+  "assignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^assigned_toISEMPTY^parentISEMPTY^sys_class_name!=u_ebonding_stage^sys_class_name!=u_ebonding_messages" +
+  "NQassignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^sys_class_name=change_task^assigned_toISEMPTY" +
+  "NQassignment_group=9ed0c8781b4b3954ee7b1131b24bcb9d^active=true^numberSTARTSWITHPRB^ORnumberSTARTSWITHTASK^assigned_toISEMPTY";
+
 // Restore saved List sort selections; default = Case ID desc (new on top)
 function restoreListSort() {
   const keySel = document.getElementById("list-sort-key");
@@ -1060,6 +1085,20 @@ function restoreListSort() {
 
 document.getElementById("list-preset").addEventListener("change", (e) => {
   const preset = e.target.value;
+  if (preset === "german-ns") {
+    // Queue mode: query the task base table with the hardcoded UNION.
+    // #list-table is used by the queue branch of btn-list (single call,
+    // no fan-out). germanMode is read by btn-list to show the Take link.
+    document.getElementById("list-query").value = GERMAN_NS_QUEUE_QUERY;
+    document.getElementById("list-table").value = "task";
+    return;
+  }
+  // Any other preset: My Tickets mode (fan-out over incident/change_request/
+  // problem — added in Task 7). Reset #list-table to incident so queue-mode
+  // state doesn't leak into the next My Tickets search. btn-list's fan-out
+  // ignores this value, but keeping it consistent avoids confusion if the
+  // fan-out is ever reverted.
+  document.getElementById("list-table").value = "incident";
   if (preset && PRESETS[preset]) {
     document.getElementById("list-query").value = PRESETS[preset];
   }
@@ -1077,7 +1116,16 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   let germanMode = (document.getElementById("list-preset").value === "german-ns");
   showLoading(listResult);
   try {
-    const tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
+    let tickets;
+    if (germanMode) {
+      // Queue mode: single call against the task base table. The UNION query
+      // returns mixed sys_class_name records in one response — no fan-out.
+      tickets = await send({ action: "listTickets", table: "task", query, limit, includeCi: true });
+    } else {
+      // My Tickets mode: single call for now (fan-out over incident/change_request/
+      // problem added in Task 7).
+      tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
+    }
     // Sort: user-selected key + direction (default Case ID desc). Comparator
     // routes all field access through displayVal/valueVal/parseUpdatedOn so the
     // {value, display_value} objects from sysparm_display_value=all don't NaN.
