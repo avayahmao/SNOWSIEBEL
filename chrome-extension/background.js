@@ -289,7 +289,7 @@ function getTicketInPage(table, ticketNumber) {
 
 function listTicketsInPage(table, query, limit, fields) {
   var params = new URLSearchParams({ sysparm_query: query, sysparm_limit: String(limit), sysparm_display_value: "all" });
-params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,sys_created_on,contact_type,cmdb_ci");
+params.set("sysparm_fields", fields || "number,short_description,description,state,priority,assigned_to,sys_updated_on,sys_created_on,contact_type,cmdb_ci,sys_class_name");
   // URLSearchParams encodes spaces as '+' (form-encoding), but ServiceNow's
   // sysparm_query parser expects '%20'. A literal '+' in a query value (e.g. the
   // group name "Avaya Infinity Platform" in the Infinity preset) is not decoded
