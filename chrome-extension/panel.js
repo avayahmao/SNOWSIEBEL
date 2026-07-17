@@ -1156,9 +1156,8 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       }
       if (failed.length) {
         pendingTableWarning = "Some tables failed to load: " + failed.join(", ");
-      } else {
-        pendingTableWarning = null;
       }
+      // else: pendingTableWarning stays null (initialized at declaration)
     }
     // Sort: user-selected key + direction (default Case ID desc). Comparator
     // routes all field access through displayVal/valueVal/parseUpdatedOn so the
