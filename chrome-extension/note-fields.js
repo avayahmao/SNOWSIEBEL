@@ -171,6 +171,7 @@
       reasons: {},
       supportsAlarmClose: false,
       resolveState: "4",
+      workStartState: null,  // sc_request has no in-progress state (only -5 Pending, 4/5/6 Closed) — Take sends no state change
       pendingState: "-5",
       hasFollowUp: false,
     },

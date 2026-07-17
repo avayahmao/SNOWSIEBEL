@@ -34,3 +34,7 @@ test("getStateConfig returns the right entry for change_task", () => {
   const cfg = getStateConfig("change_task");
   assert.equal(cfg, TABLE_STATES.change_task);
 });
+
+test("TABLE_STATES.sc_request.workStartState is null (no in-progress state)", () => {
+  assert.equal(TABLE_STATES.sc_request.workStartState, null);
+});
