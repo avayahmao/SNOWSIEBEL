@@ -1117,14 +1117,38 @@ document.getElementById("btn-list").addEventListener("click", async () => {
   showLoading(listResult);
   try {
     let tickets;
+    let pendingTableWarning = null;
     if (germanMode) {
       // Queue mode: single call against the task base table. The UNION query
       // returns mixed sys_class_name records in one response — no fan-out.
       tickets = await send({ action: "listTickets", table: "task", query, limit, includeCi: true });
     } else {
-      // My Tickets mode: single call for now (fan-out over incident/change_request/
-      // problem added in Task 7).
-      tickets = await send({ action: "listTickets", table, query, limit, includeCi: true });
+      // My Tickets mode: fan out to incident + change_request + problem in
+      // parallel, then merge. Promise.allSettled (not Promise.all) so a 400
+      // or ACL denial on one table doesn't lose the others — failed tables
+      // are surfaced as an inline warning above the results (spec §5a).
+      // includeCi:true on each call triggers 3 bulk-CI fetches (one per table)
+      // because CI enrichment runs inside listTickets in the background. This
+      // is acceptable — sys_ids are disjoint across tables, no duplicate work
+      // (spec §1, corrected cost claim).
+      const MY_TICKETS_TABLES = ["incident", "change_request", "problem"];
+      const settled = await Promise.allSettled(
+        MY_TICKETS_TABLES.map(t => send({ action: "listTickets", table: t, query, limit, includeCi: true }))
+      );
+      const failed = [];
+      tickets = [];
+      for (let i = 0; i < settled.length; i++) {
+        if (settled[i].status === "fulfilled") {
+          tickets = tickets.concat(settled[i].value);
+        } else {
+          failed.push(MY_TICKETS_TABLES[i]);
+        }
+      }
+      if (failed.length) {
+        pendingTableWarning = "Some tables failed to load: " + failed.join(", ");
+      } else {
+        pendingTableWarning = null;
+      }
     }
     // Sort: user-selected key + direction (default Case ID desc). Comparator
     // routes all field access through displayVal/valueVal/parseUpdatedOn so the
@@ -1185,6 +1209,13 @@ document.getElementById("btn-list").addEventListener("click", async () => {
       html += `</div>`;
     }
     listResult.innerHTML = html;
+    if (pendingTableWarning) {
+      const warn = document.createElement("div");
+      warn.className = "ticket-field";
+      warn.style.cssText = "padding:8px;color:var(--text-muted);border-bottom:1px solid var(--border)";
+      warn.textContent = "⚠ " + pendingTableWarning;
+      listResult.insertBefore(warn, listResult.firstChild);
+    }
   } catch (e) {
     showError(listResult, e.message);
   }
